@@ -154,6 +154,11 @@
           <button class="mini-btn" id="btn-agent-new" title="New session">↺</button>
         </div>
 
+        <div class="agent-model">
+          <label for="agent-model">Model</label>
+          <select id="agent-model" title="Model used for this conversation"></select>
+        </div>
+
         <div class="agent-context" id="agent-context">
           <label class="ctx-toggle">
             <input type="checkbox" id="ctx-graph" checked />
@@ -166,6 +171,13 @@
         </div>
 
         <div class="chat-log" id="chat-log"></div>
+
+        <div class="agent-notice" id="agent-notice" hidden>
+          <span class="notice-text" id="agent-notice-text"></span>
+          <span class="spacer"></span>
+          <button class="mini-btn" id="agent-retry" type="button">Retry</button>
+          <button class="mini-btn" id="agent-notice-stop" type="button">Stop</button>
+        </div>
 
         <div class="quick-prompts" id="quick-prompts">
           <button data-prompt="Model the codebase in the workspace as a high-level flowchart. Start with entry points, then the main happy path, then failure paths.">Model codebase</button>

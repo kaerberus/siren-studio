@@ -76,7 +76,8 @@ async function boot() {
   );
 
   await refreshTree();
-  await startAgent();
+  const model = await loadModels();
+  await startAgent(model);
 
   // open the first graph found, if any
   const first = state.entries.find((e) => e.type === 'file' && e.graph && !e.name.endsWith('.gaps.md'));
@@ -100,7 +101,7 @@ function updateOcStatus() {
   }
 }
 
-async function startAgent() {
+async function startAgent(model) {
   agent = createAgent({
     logEl: $('chat-log'),
     onStatus: (text) => { $('agent-sub').textContent = text; },
@@ -110,9 +111,111 @@ async function startAgent() {
       document.querySelector('.agent-orb')?.classList.toggle('busy', busy);
     },
     onMessages: renderChat,
+    onNotice: handleNotice,
   });
   renderChatEmpty();
-  await agent.connect(state.config, state.workspace);
+  await agent.connect(state.config, state.workspace, model);
+}
+
+// ── model selection ────────────────────────────────────────────────────────
+const MODEL_KEY = 'ms-model';
+
+function parseModelValue(value) {
+  if (!value) return null;
+  const [pm, variant] = String(value).split('#');
+  const slash = pm.indexOf('/');
+  if (slash < 1) return null;
+  const ref = { providerID: pm.slice(0, slash), id: pm.slice(slash + 1) };
+  if (variant) ref.variant = variant;
+  return ref;
+}
+
+function modelValue(ref) {
+  if (!ref) return '';
+  return `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ''}`;
+}
+
+function selectedModelRef() {
+  const stored = localStorage.getItem(MODEL_KEY);
+  return parseModelValue(stored) || state.config?.defaultModel || null;
+}
+
+function currentModelLabel() {
+  const select = $('agent-model');
+  return select?.selectedOptions?.[0]?.textContent || modelValue(agent?.model) || 'the model';
+}
+
+function applySelectValue(select, value) {
+  if (!value) return;
+  select.value = value;
+  if (select.value !== value) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    select.insertBefore(option, select.firstChild);
+    select.value = value;
+  }
+}
+
+/** Populate the model picker from OpenCode and return the chosen Model.Ref. */
+async function loadModels() {
+  const select = $('agent-model');
+  select.innerHTML = '';
+  let models = [];
+  try {
+    models = (await oc.models())?.data || [];
+  } catch (_) {
+    models = [];
+  }
+  for (const model of models) {
+    const group = document.createElement('optgroup');
+    group.label = model.providerID;
+    const base = document.createElement('option');
+    base.value = `${model.providerID}/${model.id}`;
+    base.textContent = model.name || model.id;
+    group.appendChild(base);
+    for (const variant of model.variants || []) {
+      if (variant.id === 'default') continue;
+      const option = document.createElement('option');
+      option.value = `${model.providerID}/${model.id}#${variant.id}`;
+      option.textContent = `${model.name || model.id} · ${variant.id}`;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+  const wanted = modelValue(selectedModelRef());
+  if (!models.length && wanted) {
+    applySelectValue(select, wanted);
+  } else {
+    applySelectValue(select, wanted);
+  }
+  return parseModelValue(select.value);
+}
+
+// ── stalled / empty turn notices ───────────────────────────────────────────
+function handleNotice(notice) {
+  const box = $('agent-notice');
+  const text = $('agent-notice-text');
+  const retry = $('agent-retry');
+  const stop = $('agent-notice-stop');
+  if (!notice) {
+    box.hidden = true;
+    box.classList.remove('err');
+    text.textContent = '';
+    return;
+  }
+  box.hidden = false;
+  if (notice.type === 'stalled') {
+    box.classList.remove('err');
+    text.textContent = `No output from ${notice.model} yet (${notice.elapsed}s). It may be stuck.`;
+    retry.hidden = false;
+    stop.hidden = false;
+  } else if (notice.type === 'empty') {
+    box.classList.add('err');
+    text.textContent = `${notice.model} finished without producing a response.`;
+    retry.hidden = false;
+    stop.hidden = true;
+  }
 }
 
 // ── theme ──────────────────────────────────────────────────────────────────
@@ -599,7 +702,14 @@ function renderChat(messages) {
         body.appendChild(chip);
       }
       const textEl = document.createElement('div');
-      textEl.innerHTML = markdownToHtml(parsed.text || '');
+      const idle = !parsed.text && !parsed.tools.length;
+      if (idle && parsed.completed) {
+        textEl.innerHTML = `<span class="msg-empty">The model returned no output. </span><button class="mini-btn retry-inline" type="button">Retry</button>`;
+      } else if (idle) {
+        textEl.innerHTML = `<span class="msg-waiting">Waiting for ${escapeHtml(currentModelLabel())}…</span>`;
+      } else {
+        textEl.innerHTML = markdownToHtml(parsed.text || '');
+      }
       if (!parsed.completed) {
         const cursor = document.createElement('span');
         cursor.className = 'cursor';
@@ -788,8 +898,23 @@ function wireUI() {
     }
   });
   $('chat-stop').onclick = () => agent?.stop();
-  $('btn-agent-new').onclick = () => { agent?.reset(); renderChatEmpty(); agent?.connect(state.config, state.workspace); };
+  $('btn-agent-new').onclick = () => {
+    agent?.reset();
+    renderChatEmpty();
+    agent?.connect(state.config, state.workspace, parseModelValue($('agent-model').value));
+  };
+  $('agent-model').onchange = async () => {
+    const value = $('agent-model').value;
+    localStorage.setItem(MODEL_KEY, value);
+    setStatusMsg(`model: ${value}`);
+    await agent?.setModel(parseModelValue(value));
+  };
+  $('agent-retry').onclick = () => agent?.retry();
+  $('agent-notice-stop').onclick = () => agent?.stop();
+
   $('chat-log').addEventListener('click', (event) => {
+    const retry = event.target.closest('.retry-inline');
+    if (retry) { agent?.retry(); return; }
     const button = event.target.closest('.apply-graph');
     if (!button) return;
     const code = state.pendingBlocks.get(button.dataset.block);
@@ -905,7 +1030,11 @@ async function openWorkspaceModal() {
     $('files-root').textContent = `/${result.workspace.split('/').pop()}`;
     await refreshTree();
     // Sessions are location-scoped, so start a fresh one for the new workspace.
-    if (agent) { agent.reset(); renderChatEmpty(); agent.connect(state.config, state.workspace); }
+    if (agent) {
+      agent.reset();
+      renderChatEmpty();
+      agent.connect(state.config, state.workspace, parseModelValue($('agent-model').value));
+    }
     toast(`Workspace: ${result.workspace}`, 'ok');
   } catch (err) {
     toast(`Cannot open: ${err.message}`, 'err');
@@ -1025,5 +1154,7 @@ window.__mermaidStudio = {
   renderChat,
   analyzeGraph,
   markdownToHtml,
+  handleNotice,
+  loadModels,
   get blocks() { return state.pendingBlocks; },
 };

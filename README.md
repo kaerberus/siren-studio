@@ -83,6 +83,10 @@ consistent visual vocabulary → validate → **gap analysis** → present gaps 
 questions with recommended defaults. It keeps a `*.gaps.md` ledger beside each
 diagram and cites `path:line` for claims about real code.
 
+It is pinned to `deepseek/deepseek-flash` via the `model:` field in its
+frontmatter; remove that line to let it inherit whatever OpenCode is set to.
+The editor's model picker can override it per session.
+
 ### Using it from OpenCode
 
 ```sh
@@ -95,10 +99,23 @@ Ask it to model the project; it writes `.mmd` files; the editor live-reloads.
 
 ### Using it from the editor
 
-Open the chat panel, tick "attach current diagram" / "attach gap ledger", and
-ask. Quick prompts cover *Model codebase*, *Find gaps*, *Simplify*, and
-*Add error paths*. Mermaid blocks in its replies get an **Apply to editor**
+Open the chat panel (`Ctrl+B`), tick "attach current diagram" / "attach gap
+ledger", and ask. Quick prompts cover *Model codebase*, *Find gaps*, *Simplify*,
+and *Add error paths*. Mermaid blocks in its replies get an **Apply to editor**
 button.
+
+**Model picker.** The panel header shows which model is answering. It defaults
+to `deepseek/deepseek-flash` (set with `--model provider/model#variant`, default
+effort level) and lists every model OpenCode offers, grouped by provider, with
+effort variants. Your choice is remembered and applied to the session
+immediately. Free models on OpenCode Zen are intermittently flaky — if a turn
+produces nothing, see below.
+
+**Stuck turns are visible.** A turn that produces no output for 45s is reported
+with a *"No output from `<model>` yet — Retry / Stop"* bar instead of spinning
+forever, and a reply that completes with no content says so and offers Retry.
+The editor reuses one session per workspace rather than creating a new one on
+every page load.
 
 ### The skill
 

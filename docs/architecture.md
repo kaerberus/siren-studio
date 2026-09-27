@@ -51,7 +51,7 @@ the agent sees exactly what is on screen, including unsaved edits.
 | --- | --- | --- |
 | GET | `/` and `/...` | static app files |
 | GET | `/health` | bridge + OpenCode status |
-| GET | `/api/config` | workspace, OpenCode status, agent list |
+| GET | `/api/config` | workspace, OpenCode status, agent list, default model |
 | GET | `/api/fs/tree` | workspace tree |
 | GET | `/api/fs/file?path=` | read a file |
 | PUT | `/api/fs/file` | write a file (broadcasts `file-changed`) |
@@ -76,7 +76,7 @@ a local, single-user tool, not a hardened service.
 | `bridge.js` | fetch helpers for the bridge and the proxied OpenCode API |
 | `editor.js` | CodeMirror 5 setup, a custom Mermaid simple-mode, lint wiring |
 | `viewer.js` | Mermaid render, pan/zoom, node highlighting, SVG/PNG export |
-| `agent.js` | OpenCode session lifecycle, prompt building, message parsing |
+| `agent.js` | OpenCode session lifecycle and reuse, model selection, prompt building, message parsing, stall/empty-turn detection |
 | `app.js` | state, file tree, tabs, autosave, live reload, outline, gaps, chat |
 
 ## Why CodeMirror 5 and a vendored Mermaid UMD

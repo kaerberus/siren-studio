@@ -1,6 +1,7 @@
 ---
 description: Models systems, prototypes and codebases as Mermaid graphs, hunts down design gaps, and iterates on flowcharts with you in the editor or the terminal.
 mode: all
+model: deepseek/deepseek-flash
 color: "#7c9cff"
 ---
 

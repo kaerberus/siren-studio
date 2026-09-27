@@ -41,6 +41,25 @@ IGNORED_DIRS = {
 }
 GRAPH_EXTS = {".mmd", ".mermaid", ".md"}
 DEFAULT_AGENT = "graph-engineer"
+DEFAULT_MODEL = "deepseek/deepseek-flash"
+
+
+def parse_model_ref(spec: str | None) -> dict | None:
+    """Parse ``provider/model#variant`` into a Model.Ref, or None."""
+    text = (spec or "").strip()
+    if not text or "/" not in text:
+        return None
+    variant = None
+    if "#" in text:
+        text, variant = text.split("#", 1)
+    provider, model = text.split("/", 1)
+    provider, model = provider.strip(), model.strip()
+    if not provider or not model:
+        return None
+    ref = {"providerID": provider, "id": model}
+    if variant and variant.strip():
+        ref["variant"] = variant.strip()
+    return ref
 
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/javascript", ".js")
@@ -452,6 +471,7 @@ class Handler(BaseHTTPRequestHandler):
                 "agents": agents,
             },
             "defaultAgent": DEFAULT_AGENT,
+            "defaultModel": getattr(self.server, "default_model", None),
         })
 
     # ------------------------------------------------------------------ fs api
@@ -651,23 +671,26 @@ class BridgeServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, addr, handler, workspace: Workspace, hub: Hub,
-                 oc: OpenCode, default_workspace: Path):
+                 oc: OpenCode, default_workspace: Path,
+                 default_model: dict | None = None):
         super().__init__(addr, handler)
         self.workspace = workspace
         self.hub = hub
         self.oc = oc
         self.default_workspace = default_workspace
+        self.default_model = default_model
         self.watcher = Watcher(workspace, hub)
 
 
 def build_server(host: str, port: int, workspace_dir: Path,
-                 oc_url: str | None) -> BridgeServer:
+                 oc_url: str | None, model_spec: str | None = None) -> BridgeServer:
     discovery = discover_service()
     oc = OpenCode()
     oc.configure(discovery, oc_url)
     workspace = Workspace(workspace_dir)
     hub = Hub()
-    server = BridgeServer((host, port), Handler, workspace, hub, oc, workspace_dir)
+    server = BridgeServer((host, port), Handler, workspace, hub, oc, workspace_dir,
+                          parse_model_ref(model_spec))
     return server
 
 
@@ -690,6 +713,8 @@ def main() -> int:
     parser.add_argument("--workspace", default=None,
                         help="workspace directory (default: ./graphs or cwd)")
     parser.add_argument("--oc-url", default=None, help="OpenCode server URL override")
+    parser.add_argument("--model", default=DEFAULT_MODEL,
+                        help=f"default chat model as provider/model#variant (default: {DEFAULT_MODEL})")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
@@ -702,7 +727,7 @@ def main() -> int:
         workspace_dir.mkdir(parents=True, exist_ok=True)
 
     port = find_free_port(args.host, args.port)
-    server = build_server(args.host, port, workspace_dir, args.oc_url)
+    server = build_server(args.host, port, workspace_dir, args.oc_url, args.model)
     server.watcher.start()
 
     url = f"http://{args.host}:{port}/"

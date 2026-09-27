@@ -326,6 +326,29 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 }
 .agent-orb.busy { animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(124,156,255,0.14); } 50% { box-shadow: 0 0 0 6px rgba(124,156,255,0.28); } }
+.agent-model {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border-soft);
+}
+.agent-model label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-faint); flex: none; }
+.agent-model select {
+  flex: 1; min-width: 0; padding: 5px 8px; border-radius: 6px;
+  background: var(--bg-inset); border: 1px solid var(--border); color: var(--text);
+  font-size: 12px; font-family: inherit;
+}
+.agent-model select:focus { outline: none; border-color: var(--accent); }
+
+.agent-notice {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 12px 8px; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: rgba(210, 153, 34, 0.12); border: 1px solid rgba(210, 153, 34, 0.45);
+  font-size: 12px; color: var(--text);
+}
+.agent-notice[hidden] { display: none; }
+.agent-notice.err { background: rgba(248, 81, 73, 0.1); border-color: rgba(248, 81, 73, 0.45); }
+.agent-notice .notice-text { line-height: 1.45; }
+.agent-notice code { font-family: var(--font-mono); font-size: 11.5px; }
+
 .agent-context { display: flex; gap: 14px; padding: 8px 12px; border-bottom: 1px solid var(--border-soft); }
 .ctx-toggle { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim); cursor: pointer; }
 .ctx-toggle input { accent-color: var(--accent); }
@@ -341,6 +364,8 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .msg.assistant .msg-body { background: var(--bg-elev); border: 1px solid var(--border-soft); }
 .msg.tool .msg-body { background: transparent; border: 1px dashed var(--border); color: var(--text-faint); font-family: var(--font-mono); font-size: 11.5px; padding: 7px 10px; }
 .msg.error .msg-body { background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.4); color: #ffb4ae; }
+.msg-waiting { color: var(--text-faint); font-style: italic; }
+.msg-empty { color: var(--warn); }
 .msg-body code { font-family: var(--font-mono); font-size: 11.5px; background: var(--bg-inset); padding: 1px 4px; border-radius: 4px; }
 .msg-body pre { background: var(--bg-inset); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px; overflow: auto; font-family: var(--font-mono); font-size: 11.5px; }
 .msg-body pre code { background: none; padding: 0; }

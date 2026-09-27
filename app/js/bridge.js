@@ -73,8 +73,11 @@ export const oc = {
   },
 
   agents: () => oc.call('/api/agent'),
+  models: () => oc.call('/api/model'),
+  defaultModel: () => oc.call('/api/model/default'),
   createSession: (payload) => oc.call('/api/session', { method: 'POST', body: payload }),
   switchAgent: (id, agent) => oc.call(`/api/session/${id}/agent`, { method: 'POST', body: { agent } }),
+  switchModel: (id, model) => oc.call(`/api/session/${id}/model`, { method: 'POST', body: { model } }),
   prompt: (id, payload) => oc.call(`/api/session/${id}/prompt`, { method: 'POST', body: payload }),
   context: (id) => oc.call(`/api/session/${id}/context`),
   interrupt: (id) => oc.call(`/api/session/${id}/interrupt`, { method: 'POST', body: {} }),
