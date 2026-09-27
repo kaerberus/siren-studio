@@ -1,0 +1,19 @@
+flowchart TD
+    Start([Request arrives]):::start --> Valid{Payload valid?}:::decision
+    Valid -->|no| Reject[400 Bad request]:::error
+    Valid -->|yes| Persist[(Write draft)]:::data
+    Persist --> Worker[Queue render job]:::async
+    Worker --> Render[Render diagram]:::process
+    Render --> Ok[200 OK]:::terminal
+    Render -->|renderer error| Fail[502 Render failed]:::error
+    Reject --> End([Response sent]):::terminal
+    Ok --> End
+    Fail --> End
+
+    classDef start fill:#1f6feb,stroke:#1f6feb,color:#fff
+    classDef decision fill:#d29922,stroke:#d29922,color:#111
+    classDef error fill:#f85149,stroke:#f85149,color:#fff
+    classDef data fill:#3fb950,stroke:#3fb950,color:#111
+    classDef async fill:#0d9488,stroke:#0d9488,color:#fff
+    classDef process fill:#30363d,stroke:#8b949e,color:#fff
+    classDef terminal fill:#21262d,stroke:#8b949e,color:#fff

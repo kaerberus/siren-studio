@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mermaid Studio</title>
+  <link rel="stylesheet" href="vendor/codemirror/codemirror.css" />
+  <link rel="stylesheet" href="vendor/codemirror/lint.css" />
+  <link rel="stylesheet" href="vendor/codemirror/material-darker.css" />
+  <link rel="stylesheet" href="vendor/codemirror/eclipse.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- ───────────────────────────── top bar ───────────────────────────── -->
+    <header class="topbar">
+      <button class="icon-btn" id="toggle-sidebar" title="Toggle files (Ctrl+1)" aria-label="Toggle files">
+        <svg viewBox="0 0 24 24"><path d="M3 5h18M3 12h18M3 19h18"/></svg>
+      </button>
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="9" r="2.6"/><circle cx="11" cy="18" r="2.6"/>
+          <path d="M8.2 7.1 15.4 8.6M7.4 8.3l2.6 7.3M15.7 11.2 12.6 15.8"/>
+        </svg>
+        <div class="brand-text">
+          <strong>Mermaid Studio</strong>
+          <span class="brand-sub" id="workspace-label">workspace</span>
+        </div>
+      </div>
+
+      <div class="tabs" id="tabs"></div>
+
+      <div class="topbar-actions">
+        <span class="pill" id="oc-status" title="OpenCode connection">
+          <span class="dot"></span><span class="pill-text">connecting…</span>
+        </span>
+        <button class="icon-btn" id="btn-new" title="New diagram (Ctrl+N)">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-save" title="Save (Ctrl+S)">
+          <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 15h8"/></svg>
+        </button>
+        <div class="menu-wrap">
+          <button class="icon-btn" id="btn-export" title="Export">
+            <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+          </button>
+          <div class="menu" id="export-menu" hidden>
+            <button data-export="svg">Download SVG</button>
+            <button data-export="png">Download PNG</button>
+            <button data-export="mmd">Download .mmd</button>
+            <button data-export="copy">Copy source</button>
+          </div>
+        </div>
+        <button class="icon-btn" id="btn-theme" title="Toggle theme">
+          <svg viewBox="0 0 24 24"><path d="M21 13a8 8 0 1 1-10-10 7 7 0 0 0 10 10z"/></svg>
+        </button>
+        <button class="icon-btn active" id="toggle-agent" title="Toggle Graph Engineer (Ctrl+B)">
+          <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ───────────────────────────── body ───────────────────────────── -->
+    <div class="body">
+      <!-- left sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <nav class="side-tabs">
+          <button class="side-tab active" data-panel="files">Files</button>
+          <button class="side-tab" data-panel="outline">Outline</button>
+          <button class="side-tab" data-panel="gaps">Gaps</button>
+        </nav>
+        <div class="side-panels">
+          <div class="side-panel active" id="panel-files">
+            <div class="side-head">
+              <span id="files-root">/</span>
+              <span class="spacer"></span>
+              <button class="mini-btn" id="btn-new-file" title="New file">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button class="mini-btn" id="btn-refresh" title="Refresh">
+                <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 6M20 5v6h-6"/></svg>
+              </button>
+            </div>
+            <div class="file-tree" id="file-tree"></div>
+          </div>
+
+          <div class="side-panel" id="panel-outline">
+            <div class="side-head"><span>Nodes &amp; subgraphs</span></div>
+            <div class="outline" id="outline-list"></div>
+          </div>
+
+          <div class="side-panel" id="panel-gaps">
+            <div class="side-head">
+              <span>Design gap ledger</span>
+              <span class="spacer"></span>
+              <button class="mini-btn" id="btn-gaps-edit" title="Edit ledger">✎</button>
+            </div>
+            <div class="gaps" id="gaps-list"></div>
+          </div>
+        </div>
+        <div class="side-foot">
+          <button class="ghost-btn" id="btn-open-workspace">Open workspace folder…</button>
+        </div>
+      </aside>
+
+      <!-- workbench -->
+      <main class="workbench">
+        <section class="editor-pane" id="editor-pane">
+          <div class="pane-head">
+            <span class="pane-title" id="editor-title">No file</span>
+            <span class="dirty-dot" id="dirty-dot" hidden></span>
+            <span class="spacer"></span>
+            <span class="lint-badge ok" id="lint-badge">ok</span>
+          </div>
+          <div class="editor-host" id="editor-host"></div>
+        </section>
+
+        <div class="splitter" id="splitter" title="Drag to resize"></div>
+
+        <section class="viewer-pane" id="viewer-pane">
+          <div class="pane-head">
+            <span class="pane-title">Preview</span>
+            <span class="spacer"></span>
+            <button class="mini-btn" id="zoom-out" title="Zoom out">−</button>
+            <button class="mini-btn" id="zoom-fit" title="Fit to view">Fit</button>
+            <button class="mini-btn" id="zoom-in" title="Zoom in">+</button>
+            <button class="mini-btn" id="btn-present" title="Present (full screen)">
+              <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg>
+            </button>
+          </div>
+          <div class="viewer-host" id="viewer-host">
+            <div class="graph-stage" id="graph-stage"><div class="graph-target" id="graph-target"></div></div>
+            <div class="viewer-empty" id="viewer-empty">
+              <div class="empty-card">
+                <h2>Start a diagram</h2>
+                <p>Create a new flowchart or pick a template. The Graph Engineer can also model a codebase for you.</p>
+                <div class="template-grid" id="template-grid"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- agent panel -->
+      <aside class="agent-panel" id="agent-panel">
+        <div class="agent-head">
+          <div class="agent-id">
+            <span class="agent-orb"></span>
+            <div>
+              <strong>Graph Engineer</strong>
+              <span class="agent-sub" id="agent-sub">offline</span>
+            </div>
+          </div>
+          <button class="mini-btn" id="btn-agent-new" title="New session">↺</button>
+        </div>
+
+        <div class="agent-context" id="agent-context">
+          <label class="ctx-toggle">
+            <input type="checkbox" id="ctx-graph" checked />
+            <span>attach current diagram</span>
+          </label>
+          <label class="ctx-toggle">
+            <input type="checkbox" id="ctx-gaps" checked />
+            <span>attach gap ledger</span>
+          </label>
+        </div>
+
+        <div class="chat-log" id="chat-log"></div>
+
+        <div class="quick-prompts" id="quick-prompts">
+          <button data-prompt="Model the codebase in the workspace as a high-level flowchart. Start with entry points, then the main happy path, then failure paths.">Model codebase</button>
+          <button data-prompt="Review the current diagram for design gaps: unhandled error paths, missing terminal states, ambiguous decisions, races, and auth branches. List them as questions.">Find gaps</button>
+          <button data-prompt="Simplify the current diagram without losing meaning. Reduce crossing edges, group related steps, and keep labels short.">Simplify</button>
+          <button data-prompt="Add the failure and recovery paths to the current diagram: timeouts, retries, and user-visible errors.">Add error paths</button>
+        </div>
+
+        <form class="composer" id="composer">
+          <textarea id="chat-input" rows="2" placeholder="Ask the Graph Engineer to draft, refine, or interrogate a graph…"></textarea>
+          <div class="composer-row">
+            <span class="hint" id="composer-hint">Ctrl+Enter to send</span>
+            <span class="spacer"></span>
+            <button class="primary-btn" id="chat-send" type="submit">Send</button>
+            <button class="icon-btn danger" id="chat-stop" type="button" hidden title="Stop">
+              <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+            </button>
+          </div>
+        </form>
+      </aside>
+    </div>
+
+    <!-- ───────────────────────────── status bar ───────────────────────────── -->
+    <footer class="statusbar">
+      <span id="status-file">—</span>
+      <span class="spacer"></span>
+      <span id="status-msg"></span>
+      <span class="spacer"></span>
+      <span id="status-pos">Ln 1, Col 1</span>
+      <span id="status-mermaid">mermaid</span>
+    </footer>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <!-- vendors (classic scripts; expose window.CodeMirror and window.mermaid) -->
+  <script src="vendor/codemirror/codemirror.min.js"></script>
+  <script src="vendor/codemirror/simple.js"></script>
+  <script src="vendor/codemirror/matchbrackets.js"></script>
+  <script src="vendor/codemirror/closebrackets.js"></script>
+  <script src="vendor/codemirror/active-line.js"></script>
+  <script src="vendor/codemirror/comment.js"></script>
+  <script src="vendor/codemirror/searchcursor.js"></script>
+  <script src="vendor/codemirror/lint.js"></script>
+  <script src="vendor/codemirror/placeholder.js"></script>
+  <script src="vendor/mermaid.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
