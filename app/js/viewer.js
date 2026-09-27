@@ -1,60 +1,52 @@
-// viewer.js — Mermaid rendering, pan/zoom, node highlighting and export.
+// viewer.js — Mermaid rendering, viewBox-based pan/zoom, highlighting, export.
+//
+// Mermaid emits `<svg width="100%" style="max-width: Npx" viewBox="x y w h">`
+// with no height attribute. Instead of sizing the element and CSS-transforming
+// it (which mis-measures and rasterises), we let the SVG fill the stage and
+// drive `viewBox` directly. That keeps everything vector-crisp and makes
+// "fit" nothing more than restoring the content's own viewBox.
 
 const mermaid = window.mermaid;
+
+const MIN_SCALE = 0.25; // zoomed out to a quarter of "fit"
+const MAX_SCALE = 24;   // zoomed in 24x
+const FIT_PAD = 0.05;   // 5% breathing room around the content
 
 let stage = null;
 let target = null;
 let emptyState = null;
 let themeMode = 'dark';
 
-const view = { scale: 1, tx: 0, ty: 0 };
+// base: the content's own viewBox. view: what we currently show.
+let base = { x: 0, y: 0, w: 1, h: 1 };
+let view = { x: 0, y: 0, w: 1, h: 1 };
+// Once the user zooms or pans we stop auto-fitting on re-render and preserve
+// their viewport instead.
+let userAdjusted = false;
 
-function apply() {
-  target.style.transform =
-    `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
-}
-
-function svgSize(svg) {
-  const box = svg.getAttribute('viewBox');
-  if (box) {
-    const parts = box.split(/[\s,]+/).map(Number);
-    if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
-      return { width: parts[2], height: parts[3] };
-    }
-  }
-  const rect = svg.getBoundingClientRect();
-  return { width: rect.width || 1, height: rect.height || 1 };
-}
-
-function normaliseSvg(svg) {
-  const { width, height } = svgSize(svg);
-  svg.setAttribute('width', String(width));
-  svg.setAttribute('height', String(height));
-  svg.style.maxWidth = 'none';
-  svg.style.background = 'transparent';
-  return { width, height };
-}
+const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
 
 export function initViewer({ stageEl, targetEl, emptyEl }) {
   stage = stageEl;
   target = targetEl;
   emptyState = emptyEl;
-  mermaid.initialize({
+  mermaid.initialize(config());
+  bindInteraction();
+}
+
+function config() {
+  return {
     startOnLoad: false,
     securityLevel: 'loose',
+    theme: themeMode === 'light' ? 'default' : 'dark',
     fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
-  });
-  bindInteraction();
+    flowchart: { useMaxWidth: false },
+  };
 }
 
 export function setTheme(mode) {
   themeMode = mode;
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: 'loose',
-    theme: mode === 'light' ? 'default' : 'dark',
-    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
-  });
+  mermaid.initialize(config());
 }
 
 export function setEmptyVisible(visible) {
@@ -62,6 +54,61 @@ export function setEmptyVisible(visible) {
   if (target) target.classList.toggle('hidden', visible);
 }
 
+// ── viewBox helpers ────────────────────────────────────────────────────────
+function svgEl() {
+  return target ? target.querySelector('svg') : null;
+}
+
+function readBaseViewBox(el) {
+  const raw = el.getAttribute('viewBox');
+  if (raw) {
+    const parts = raw.split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+      return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+    }
+  }
+  if (typeof el.getBBox === 'function') {
+    try {
+      const box = el.getBBox();
+      if (box && box.width > 0 && box.height > 0) {
+        return { x: box.x, y: box.y, w: box.width, h: box.height };
+      }
+    } catch (_) { /* not rendered yet */ }
+  }
+  return { x: 0, y: 0, w: 1, h: 1 };
+}
+
+function expand(rect, pad) {
+  const dx = rect.w * pad;
+  const dy = rect.h * pad;
+  return { x: rect.x - dx, y: rect.y - dy, w: rect.w + dx * 2, h: rect.h + dy * 2 };
+}
+
+function applyViewBox() {
+  const el = svgEl();
+  if (!el) return;
+  el.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+  el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+}
+
+/** Map a client (screen) point into current user/viewBox units. */
+function screenToUser(el, clientX, clientY) {
+  const ctm = el.getScreenCTM?.();
+  if (ctm && typeof el.createSVGPoint === 'function') {
+    const point = el.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const mapped = point.matrixTransform(ctm.inverse());
+    return { x: mapped.x, y: mapped.y };
+  }
+  if (ctm && typeof DOMPoint === 'function') {
+    return new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  }
+  // Fallback (no layout, e.g. headless): treat the point as the view centre.
+  return { x: view.x + view.w / 2, y: view.y + view.h / 2 };
+}
+
+// ── render ─────────────────────────────────────────────────────────────────
 let renderSeq = 0;
 
 /** Render mermaid source. Returns {ok, error?, empty?}. */
@@ -79,8 +126,21 @@ export async function render(text) {
     if (seq !== renderSeq) return { ok: true, stale: true };
     target.innerHTML = svg;
     setEmptyVisible(false);
-    const rendered = target.querySelector('svg');
-    if (rendered) { normaliseSvg(rendered); fit(); }
+    const el = svgEl();
+    if (el) {
+      // Let the SVG fill the stage; viewBox does the fitting.
+      el.removeAttribute('width');
+      el.removeAttribute('height');
+      el.style.maxWidth = 'none';
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.background = 'transparent';
+      el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      const previous = base;
+      base = readBaseViewBox(el);
+      if (userAdjusted && previous.w > 0) preserveView(previous);
+      else fit();
+    }
     return { ok: true };
   } catch (err) {
     cleanupStray(id);
@@ -90,10 +150,10 @@ export async function render(text) {
 }
 
 function cleanupStray(id) {
+  if (typeof CSS === 'undefined' || typeof CSS.escape !== 'function') return;
   for (const sel of [`#${CSS.escape(id)}`, `#d${CSS.escape(id)}`]) {
     const el = document.querySelector(sel);
-    if (el && el.parentElement === document.body && el.tagName !== 'DIV') el.remove();
-    else if (el && el.id.startsWith('dmmd-')) el.remove();
+    if (el && el.parentElement === document.body) el.remove();
   }
 }
 
@@ -127,81 +187,142 @@ function errorAnnotation(err) {
   };
 }
 
-// ── pan / zoom ─────────────────────────────────────────────────────────────
-function bindInteraction() {
-  if (!stage) return;
-  let dragging = false;
-  let sx = 0;
-  let sy = 0;
-  let ox = 0;
-  let oy = 0;
-
-  stage.addEventListener('wheel', (event) => {
-    if (!target.querySelector('svg')) return;
-    event.preventDefault();
-    const rect = stage.getBoundingClientRect();
-    const px = event.clientX - rect.left;
-    const py = event.clientY - rect.top;
-    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const next = Math.min(6, Math.max(0.08, view.scale * factor));
-    const ratio = next / view.scale;
-    view.tx = px - (px - view.tx) * ratio;
-    view.ty = py - (py - view.ty) * ratio;
-    view.scale = next;
-    apply();
-  }, { passive: false });
-
-  stage.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
-    if (!target.querySelector('svg')) return;
-    dragging = true;
-    stage.classList.add('grabbing');
-    sx = event.clientX; sy = event.clientY;
-    ox = view.tx; oy = view.ty;
-    stage.setPointerCapture(event.pointerId);
-  });
-  stage.addEventListener('pointermove', (event) => {
-    if (!dragging) return;
-    view.tx = ox + (event.clientX - sx);
-    view.ty = oy + (event.clientY - sy);
-    apply();
-  });
-  const end = (event) => {
-    if (!dragging) return;
-    dragging = false;
-    stage.classList.remove('grabbing');
-    try { stage.releasePointerCapture(event.pointerId); } catch (_) {}
-  };
-  stage.addEventListener('pointerup', end);
-  stage.addEventListener('pointercancel', end);
-
-  window.addEventListener('resize', () => { /* keep transform; user can refit */ });
+// ── fit / zoom / pan ───────────────────────────────────────────────────────
+/** Centre and fit the whole graph. No-op safe when nothing is rendered. */
+export function fit() {
+  view = expand(base, FIT_PAD);
+  userAdjusted = false;
+  applyViewBox();
 }
 
-export function fit() {
-  const svg = target.querySelector('svg');
-  if (!svg || !stage) return;
-  const { width, height } = svgSize(svg);
-  const sw = stage.clientWidth;
-  const sh = stage.clientHeight;
-  const pad = 56;
-  const scale = Math.min((sw - pad) / width, (sh - pad) / height, 2);
-  view.scale = scale > 0.02 ? scale : 1;
-  view.tx = (sw - width * view.scale) / 2;
-  view.ty = (sh - height * view.scale) / 2;
-  apply();
+/** Forget the user's pan/zoom so the next render auto-fits (used on tab switch). */
+export function resetView() {
+  userAdjusted = false;
+}
+
+/** Keep the current relative zoom/centre across a re-render. */
+function preserveView(previous) {
+  if (view.w <= 0 || previous.w <= 0) { fit(); return; }
+  const scale = previous.w / view.w;
+  const cx = (view.x + view.w / 2 - previous.x) / previous.w;
+  const cy = (view.y + view.h / 2 - previous.y) / previous.h;
+  view.w = base.w / scale;
+  view.h = base.h / scale;
+  view.x = base.x + cx * base.w - view.w / 2;
+  view.y = base.y + cy * base.h - view.h / 2;
+  applyViewBox();
+}
+
+function currentScale() {
+  return view.w > 0 ? base.w / view.w : 1;
+}
+
+/** Zoom by `factor` about a client point (defaults to the stage centre). */
+function zoomAt(factor, clientX, clientY) {
+  const el = svgEl();
+  if (!el || !stage) return;
+  let px = clientX;
+  let py = clientY;
+  if (px == null || py == null) {
+    const rect = stage.getBoundingClientRect();
+    px = rect.left + rect.width / 2;
+    py = rect.top + rect.height / 2;
+  }
+  const scale = currentScale();
+  const next = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
+  if (Math.abs(next - scale) < 1e-6) return;
+  const k = scale / next; // viewBox shrink/stretch factor
+
+  const anchor = screenToUser(el, px, py);
+  view.x = anchor.x - (anchor.x - view.x) * k;
+  view.y = anchor.y - (anchor.y - view.y) * k;
+  view.w *= k;
+  view.h *= k;
+  userAdjusted = true;
+  applyViewBox();
 }
 
 export function zoom(factor) {
+  zoomAt(factor);
+}
+
+/** Centre on a node without changing the zoom level. */
+export function focusNode(id) {
+  const node = findNodeElement(id);
+  if (!node || typeof node.getBBox !== 'function') return false;
+  let box;
+  try { box = node.getBBox(); } catch (_) { return false; }
+  if (!box || box.width <= 0) return false;
+  view.x = box.x + box.width / 2 - view.w / 2;
+  view.y = box.y + box.height / 2 - view.h / 2;
+  userAdjusted = true;
+  applyViewBox();
+  return true;
+}
+
+export function getViewport() {
+  return {
+    base: { ...base },
+    view: { ...view },
+    scale: currentScale(),
+    userAdjusted,
+  };
+}
+
+function bindInteraction() {
   if (!stage) return;
-  const sw = stage.clientWidth / 2;
-  const sh = stage.clientHeight / 2;
-  const next = Math.min(6, Math.max(0.08, view.scale * factor));
-  const ratio = next / view.scale;
-  view.tx = sw - (sw - view.tx) * ratio;
-  view.ty = sh - (sh - view.ty) * ratio;
-  view.scale = next;
-  apply();
+  let dragging = false;
+  let startView = null;
+  let startLoc = null;
+  let inverseCTM = null;
+
+  stage.addEventListener('wheel', (event) => {
+    if (!svgEl()) return;
+    event.preventDefault();
+    zoomAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, event.clientX, event.clientY);
+  }, { passive: false });
+
+  stage.addEventListener('pointerdown', (event) => {
+    const el = svgEl();
+    if (event.button !== 0 || !el) return;
+    const ctm = el.getScreenCTM?.();
+    inverseCTM = ctm ? ctm.inverse() : null;
+    dragging = true;
+    stage.classList.add('grabbing');
+    startView = { ...view };
+    startLoc = screenToUser(el, event.clientX, event.clientY);
+    stage.setPointerCapture(event.pointerId);
+  });
+
+  stage.addEventListener('pointermove', (event) => {
+    if (!dragging || !startView) return;
+    const el = svgEl();
+    let loc;
+    if (inverseCTM && el && typeof el.createSVGPoint === 'function') {
+      const point = el.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      const mapped = point.matrixTransform(inverseCTM);
+      loc = { x: mapped.x, y: mapped.y };
+    } else {
+      loc = screenToUser(el, event.clientX, event.clientY);
+    }
+    view.x = startView.x - (loc.x - startLoc.x);
+    view.y = startView.y - (loc.y - startLoc.y);
+    userAdjusted = true;
+    applyViewBox();
+  });
+
+  const end = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    startView = null;
+    inverseCTM = null;
+    stage.classList.remove('grabbing');
+    try { stage.releasePointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
 }
 
 // ── node highlighting ──────────────────────────────────────────────────────
@@ -216,38 +337,45 @@ function nodeIdOf(el) {
 }
 
 export function getNodeElements() {
-  const svg = target.querySelector('svg');
-  if (!svg) return [];
-  return Array.from(svg.querySelectorAll('g.node, g.statediagram-state, g.classGroup'))
-    .map((el) => ({ id: nodeIdOf(el), el }));
+  const el = svgEl();
+  if (!el) return [];
+  return Array.from(el.querySelectorAll('g.node, g.statediagram-state, g.classGroup'))
+    .map((node) => ({ id: nodeIdOf(node), el: node }));
+}
+
+function findNodeElement(id) {
+  const nodes = getNodeElements();
+  const hit = nodes.find((node) => node.id === id || node.id.endsWith(`-${id}`));
+  return hit ? hit.el : null;
 }
 
 export function highlightNode(id) {
-  const nodes = getNodeElements();
-  let found = null;
-  for (const node of nodes) {
-    const active = node.id === id || node.id.endsWith(`-${id}`) || node.id === id.replace(/^.*\./, '');
+  let found = false;
+  for (const node of getNodeElements()) {
+    const active = node.id === id || node.id.endsWith(`-${id}`);
     node.el.classList.toggle('node-highlight', active);
-    if (active) found = node.el;
+    if (active) found = true;
   }
-  if (found) {
-    try { found.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) {}
-  }
-  return Boolean(found);
+  return found;
 }
 
 export function clearHighlight() {
-  target.querySelectorAll('.node-highlight')
-    .forEach((el) => el.classList.remove('node-highlight'));
+  const el = svgEl();
+  if (el) el.querySelectorAll('.node-highlight').forEach((n) => n.classList.remove('node-highlight'));
 }
 
 // ── export ─────────────────────────────────────────────────────────────────
 function svgMarkup() {
-  const svg = target.querySelector('svg');
-  if (!svg) return null;
-  const clone = svg.cloneNode(true);
+  const el = svgEl();
+  if (!el) return null;
+  const clone = el.cloneNode(true);
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  // Export the whole graph at its natural size, ignoring the current zoom/pan.
+  clone.setAttribute('viewBox', `${base.x} ${base.y} ${base.w} ${base.h}`);
+  clone.setAttribute('width', String(base.w));
+  clone.setAttribute('height', String(base.h));
+  clone.removeAttribute('style');
   return new XMLSerializer().serializeToString(clone);
 }
 
@@ -259,12 +387,11 @@ export function exportSvg(filename = 'diagram.svg') {
 }
 
 export async function exportPng(filename = 'diagram.png', scale = 2) {
-  const svg = target.querySelector('svg');
-  if (!svg) return false;
+  if (!svgEl()) return false;
   const markup = svgMarkup();
-  const { width, height } = svgSize(svg);
-  const blob = new Blob([markup], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+  const width = base.w;
+  const height = base.h;
+  const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const image = await loadImage(url);
     const canvas = document.createElement('canvas');

@@ -5,7 +5,7 @@ import { createEditor } from './editor.js';
 import {
   initViewer, render as renderGraph, setTheme as setMermaidTheme, fit, zoom,
   exportSvg, exportPng, lintMermaid, highlightNode, clearHighlight,
-  setEmptyVisible,
+  setEmptyVisible, focusNode, resetView,
 } from './viewer.js';
 import { createAgent, extractAssistant, toolLabel } from './agent.js';
 
@@ -211,6 +211,7 @@ function activateTab(key) {
   const tab = findTab(key);
   if (!tab) return;
   state.active = key;
+  resetView(); // each diagram starts fitted
   editor.setValue(tab.content);
   $('editor-title').textContent = tab.name;
   $('status-file').textContent = tab.path || `${tab.name} (unsaved)`;
@@ -469,7 +470,7 @@ function renderOutline(analysis) {
     row.innerHTML = `<span class="outline-kind">${item.kind}</span><span>${escapeHtml(item.label || item.id)}</span>`;
     row.onmouseenter = () => { highlightNode(item.id); editor.highlightLines(analysis.linesForId(item.id)); };
     row.onmouseleave = () => { clearHighlight(); editor.clearHighlight(); };
-    row.onclick = () => editor.gotoLine(item.line);
+    row.onclick = () => { editor.gotoLine(item.line); focusNode(item.id); };
     host.appendChild(row);
   }
 }
@@ -819,6 +820,7 @@ function wireUI() {
       || (group.id || '').replace(/^(?:flowchart|state)-/, '').replace(/-\d+$/, '');
     const node = analysis.nodes.find((n) => n.id === id);
     if (node) editor.gotoLine(node.line);
+    focusNode(id);
   });
 
   // shortcuts

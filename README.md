@@ -48,8 +48,10 @@ open: `opencode service status`).
 
 - **Split view** — CodeMirror editor with Mermaid syntax highlighting, bracket
   matching and inline lint errors, next to a live Mermaid preview.
-- **Viewer** — wheel to zoom, drag to pan, fit-to-view, full-screen present mode,
-  export to SVG / PNG / `.mmd`, copy source.
+- **Viewer** — auto-centres and fits the graph on open; wheel to zoom, drag to
+  pan, Fit to reset. Zoom/pan is done by driving the SVG `viewBox`, so it stays
+  vector-crisp at any magnification. Full-screen present mode, export to
+  SVG / PNG / `.mmd`, copy source.
 - **Selection sync** — hover a node in the preview and its source lines light up;
   click an outline entry to jump to its definition; click a node to jump to it.
 - **Panels** — Files, Outline (nodes + subgraphs), and **Gaps**, which renders

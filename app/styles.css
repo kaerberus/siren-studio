@@ -282,8 +282,9 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   radial-gradient(circle at 1px 1px, var(--border-soft) 1px, transparent 0) 0 0 / 22px 22px, var(--bg); }
 .graph-stage { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
 .graph-stage.grabbing { cursor: grabbing; }
-.graph-target { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
-.graph-target svg { display: block; max-width: none !important; height: auto; }
+.graph-target { position: absolute; inset: 0; }
+/* The SVG fills the stage; the viewBox drives fit/zoom, so it stays vector-crisp. */
+.graph-target svg { display: block; width: 100% !important; height: 100% !important; max-width: none !important; }
 .graph-target.hidden { display: none; }
 .viewer-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .viewer-empty[hidden] { display: none; }
