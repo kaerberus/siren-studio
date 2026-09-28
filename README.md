@@ -41,9 +41,13 @@ python3 install-agent.py
 # 2. start the editor (opens your browser)
 python3 start.py
 
-# point it at a project instead of the bundled examples
-python3 start.py --workspace ~/code/my-project
+# point it at a project instead of this checkout
+python3 start.py --project ~/code/my-project
 ```
+
+The editor opens on a **project root**, and diagrams live in a directory inside
+it (default `graphs/`). The project root is the OpenCode session Location, so
+diagram paths read as `graphs/03-payment.mmd` for you and for the agent.
 
 Requires the OpenCode service to be running (it normally is while OpenCode is
 open: `opencode service status`).
@@ -169,33 +173,58 @@ agent:
 
 ## Making the graph inform development
 
-Nothing about the graph reaches your coding agents until you tell them it exists.
-The mechanism is a project `AGENTS.md` — V2 recognises that file only, and the
-`instructions` config array is not resolved in V2, so don't reach for it.
+Nothing about the graph reaches your coding agents until something tells them it
+exists. The mechanism is a project `AGENTS.md` — V2 recognises that file only, the
+`instructions` config array is not resolved in V2, and `references` is for
+directories outside the project. So it has to be a file in the repo.
 
-Drop a section like this in the project root (this repo's own `AGENTS.md` is the
-same text):
+**The editor writes it for you.** Two places:
 
-```md
-## `graphs/` is design intent, not documentation
+- **When you pick a project** — the picker has a *Set up for diagrams* checkbox,
+  ticked by default for a fresh folder and unticked for a project that already
+  has an `AGENTS.md`. Picking the folder then creates the diagrams directory if
+  needed and wires the awareness in the same gesture.
+- **The sidebar button** — `Make agents aware` / `Agents aware ✓`. Clicking it
+  shows the project, the files and the exact block before you commit, with
+  **Update** and **Unwire**.
 
-- Before implementing or changing a flow, read the relevant `graphs/*.mmd`.
-- Read its `*.gaps.md` ledger too. Open questions there are unresolved
-  decisions — raise them, do not invent an answer.
-- Never edit anything under `graphs/` as part of a coding task. If a graph is
-  wrong, say so and stop.
-- If your implementation diverges from the graph, say so explicitly. A mismatch
-  is a design change that needs a decision.
-```
+It writes two things:
+
+| file | when it loads | contents |
+| --- | --- | --- |
+| `<root>/AGENTS.md` | before the agent starts | a few lines: read the diagram before implementing a flow, never edit `graphs/`, say so when code diverges, and a pointer to the nested file |
+| `<root>/graphs/AGENTS.md` | when an agent first reads a file in `graphs/` | the diagram conventions — naming, ledger pairing, size limits |
+
+That split is the closest thing to conditionality the mechanism offers. You
+cannot branch on *which agent* is running — the root file is injected into every
+session in that project. You branch on *what the agent is doing*: everybody gets
+the short pointer, and only agents that actually open a diagram get the detail.
+
+### How the files are managed
+
+Both files are wrapped in `<!-- graph-awareness:start -->` / `<!-- graph-awareness:end -->`
+comments. The tool only ever replaces what is between them, so your own text
+survives — and re-running is safe: no duplicate blocks, and the paths inside
+refresh if you move the diagrams directory. **Unwire** deletes just that block.
+
+### Choosing the diagrams directory
+
+Detection runs first, and it guards against the obvious ways to get it wrong:
+
+1. a directory this project used before, if it still exists;
+2. an existing `graphs/`;
+3. diagrams at the project root — so pointing the editor at your existing
+   diagrams folder never creates `graphs/graphs/`;
+4. diagrams already somewhere else (say `docs/flows/`) — adopted, not shadowed.
+
+Only if none of those apply is `graphs/` created. A project's diagrams directory
+is remembered, so a project you set up before drawing anything keeps its choice
+instead of getting a competing default later.
 
 That is the whole "seeding" step: point `plan` or `build` at a well-designed
 graph and let the diagram be the spec. There is no code generation from graphs,
-and there shouldn't be — graphs are coarse and codegen from a coarse model gets
+and there shouldn't be — graphs are coarse, and codegen from a coarse model gets
 ugly fast.
-
-You can also put an `AGENTS.md` inside `graphs/` with the diagram conventions.
-Nested instruction files are loaded when an agent first reads a file in that
-directory, so they arrive exactly when relevant instead of in every prompt.
 
 ## Layout
 
@@ -214,7 +243,8 @@ opencode-mermaid/
 │  ├─ global-permissions.json   graph_* denied to every agent by default
 │  ├─ skills/graph-engineering/
 │  └─ plugins/graph-tools.js
-├─ AGENTS.md                tells other agents the graph is design intent
+├─ AGENTS.md                generator-managed graph awareness (this repo)
+├─ graphs/AGENTS.md         generator-managed diagram conventions
 └─ docs/architecture.md
 ```
 
@@ -226,8 +256,12 @@ opencode-mermaid/
 - **Proxy** — everything under `/oc/*` is forwarded to the OpenCode API,
   including the `/api/event` SSE stream (browsers can't set auth headers on
   `EventSource`, so the bridge adds them).
-- **Filesystem** — `/api/fs/*` is scoped to the workspace; writes are atomic and
-  broadcast as `file-changed` events tagged `editor` or `external`.
+- **Filesystem** — `/api/fs/*` is rooted at the project root and scoped to the
+  diagrams directory; writes are atomic and broadcast as `file-changed` events
+  tagged `editor` or `external`.
+- **Project memory** — the chosen diagrams directory per project is kept in
+  `~/.local/state/opencode-mermaid/projects.json`, because a directory that is
+  still empty cannot be detected by looking at its contents.
 - **Binds to `127.0.0.1` only.** It is a single-user local tool: any local
   process that can reach the port can read and write the workspace.
 

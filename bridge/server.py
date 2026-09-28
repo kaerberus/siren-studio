@@ -46,6 +46,7 @@ GRAPH_EXTS = {".mmd", ".mermaid", ".md"}
 DEFAULT_AGENT = "graph-engineer"
 DEFAULT_MODEL = "deepseek/deepseek-flash"
 DEFAULT_PORT = 8777
+DEFAULT_GRAPHS_DIR = "graphs"
 
 
 def parse_model_ref(spec: str | None) -> dict | None:
@@ -216,6 +217,78 @@ def state_dir() -> Path:
     if state:
         return Path(state) / "opencode-mermaid"
     return Path.home() / ".local" / "state" / "opencode-mermaid"
+
+
+MARKER_START = "<!-- graph-awareness:start -->"
+MARKER_END = "<!-- graph-awareness:end -->"
+
+
+def root_awareness_block(graphs_rel: str, with_pointer: bool) -> str:
+    label = diagrams_label(graphs_rel)
+    lines = [
+        MARKER_START,
+        f"## Design intent lives in {label}",
+        "",
+        f"The Mermaid diagrams in {label} are the agreed design, not documentation.",
+        "They are authored with a human in Mermaid Studio.",
+        "",
+        "- Read the relevant diagram and its `.gaps.md` ledger before implementing a flow.",
+        "- Open questions in a ledger are unresolved decisions — raise them, do not invent answers.",
+        f"- Never edit anything under {label} as part of a coding task. If a diagram is wrong, say so and stop.",
+        "- If your implementation diverges from the graph, say so explicitly. A mismatch is a decision, not something to smooth over.",
+    ]
+    if with_pointer:
+        lines.append(f"- See `{graphs_rel}/AGENTS.md` for the diagram conventions.")
+    lines.append(MARKER_END)
+    return "\n".join(lines)
+
+
+def conventions_block() -> str:
+    return "\n".join([
+        MARKER_START,
+        "# Diagram conventions",
+        "",
+        "Diagrams in this directory are design intent, curated with a human in Mermaid Studio.",
+        "",
+        "- One flow per file, named `NN-topic.mmd` (`03-payment.mmd`).",
+        "- The gap ledger for `NN-topic.mmd` is `NN-topic.gaps.md`.",
+        "- Keep a diagram under about 20 nodes; split rather than sprawl.",
+    ] + [MARKER_END])
+
+
+def read_text_or_none(path: Path) -> str | None:
+    try:
+        return path.read_text("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def is_wired(text: str | None) -> bool:
+    return bool(text) and MARKER_START in text and MARKER_END in text
+
+
+def upsert_block(existing: str | None, block: str) -> str:
+    """Insert or replace a marker-delimited block, never touching other text."""
+    if existing is None:
+        return block + "\n"
+    start = existing.find(MARKER_START)
+    end = existing.find(MARKER_END)
+    if start != -1 and end > start:
+        return existing[:start] + block + existing[end + len(MARKER_END):]
+    prefix = existing.rstrip("\n")
+    return (prefix + "\n\n" if prefix else "") + block + "\n"
+
+
+def strip_block(existing: str | None) -> str:
+    """Remove the marker-delimited block, leaving the file's own text intact."""
+    if not existing:
+        return existing or ""
+    start = existing.find(MARKER_START)
+    end = existing.find(MARKER_END)
+    if start == -1 or end <= start:
+        return existing
+    trimmed = (existing[:start].rstrip("\n") + "\n" + existing[end + len(MARKER_END):].lstrip("\n"))
+    return trimmed.strip("\n") + "\n" if trimmed.strip() else ""
 
 
 def registration_path(port: int | None = None) -> Path:
@@ -420,14 +493,111 @@ class Validator:
 # --------------------------------------------------------------------------- #
 # Workspace
 # --------------------------------------------------------------------------- #
+def find_diagrams_dir(root: Path, max_depth: int = 3) -> str | None:
+    """Shallowest directory under `root` that already holds Mermaid files."""
+    queue: list[tuple[Path, int]] = [(root, 0)]
+    while queue:
+        directory, depth = queue.pop(0)
+        if depth >= max_depth:
+            continue
+        try:
+            children = sorted(directory.iterdir(), key=lambda p: p.name.lower())
+        except OSError:
+            continue
+        for child in children:
+            if not child.is_dir() or child.name in IGNORED_DIRS or child.name.startswith("."):
+                continue
+            try:
+                if any(child.glob("*.mmd")) or any(child.glob("*.mermaid")):
+                    return str(child.relative_to(root)).replace(os.sep, "/")
+            except OSError:
+                continue
+            queue.append((child, depth + 1))
+    return None
+
+
+def projects_path() -> Path:
+    return state_dir() / "projects.json"
+
+
+def remembered_graphs_dir(project: Path) -> str | None:
+    entry = read_json_file(projects_path()).get(str(project.resolve()))
+    return entry.get("graphsDir") if isinstance(entry, dict) else None
+
+
+def remember_project(project: Path, graphs_rel: str) -> None:
+    """Persist a project's diagrams directory.
+
+    Detection alone cannot see a diagrams directory that is still empty, so a
+    project set up before anything is drawn in it would otherwise be forgotten
+    and get a fresh `graphs/` next time.
+    """
+    data = read_json_file(projects_path())
+    data[str(project.resolve())] = {"graphsDir": graphs_rel, "at": time.time()}
+    try:
+        state_dir().mkdir(parents=True, exist_ok=True)
+        projects_path().write_text(json.dumps(data, indent=1))
+    except OSError:
+        pass
+
+
+def detect_graphs_dir(root: Path, remembered: str | None = None) -> str:
+    """Where do this project's diagrams live? Returns a root-relative path.
+
+    Guard 1: a remembered directory that still exists always wins.
+    Guard 2: an existing `graphs/` wins next.
+    Guard 3: if the root itself holds diagrams, they live at the root — this is
+             what stops us creating a nested `graphs/graphs/` when someone points
+             the editor at their existing diagrams directory.
+    Guard 4: if diagrams already live somewhere else, point at them instead of
+             creating a competing empty directory.
+    """
+    if remembered and (root / remembered).is_dir():
+        return remembered
+    if (root / DEFAULT_GRAPHS_DIR).is_dir():
+        return DEFAULT_GRAPHS_DIR
+    if any(root.glob("*.mmd")) or any(root.glob("*.mermaid")):
+        return "."
+    found = find_diagrams_dir(root)
+    if found is not None:
+        return found
+    # fall back to what this project used before, so an empty directory is not
+    # abandoned in favour of a fresh default
+    return remembered or DEFAULT_GRAPHS_DIR
+
+
+def diagrams_label(graphs_rel: str) -> str:
+    return "this directory" if graphs_rel in ("", ".") else f"`{graphs_rel}/`"
+
+
 class Workspace:
-    def __init__(self, root: Path) -> None:
-        self.root = root.resolve()
+    """The project root (where agents and AGENTS.md live) plus its diagrams dir."""
+
+    def __init__(self, root: Path, graphs_rel: str | None = None) -> None:
         self._local_writes: dict[str, float] = {}
         self._lock = threading.Lock()
-
-    def set_root(self, root: Path) -> None:
         self.root = root.resolve()
+        self.graphs_rel = (graphs_rel if graphs_rel is not None
+                           else detect_graphs_dir(self.root, remembered_graphs_dir(self.root)))
+        self.graphs_dir = self._resolve_graphs(self.graphs_rel)
+        remember_project(self.root, self.graphs_rel)
+
+    def _resolve_graphs(self, graphs_rel: str) -> Path:
+        if graphs_rel in ("", "."):
+            return self.root
+        return (self.root / graphs_rel).resolve()
+
+    def set_root(self, root: Path, graphs_rel: str | None = None) -> None:
+        self.root = root.resolve()
+        self.graphs_rel = (graphs_rel if graphs_rel is not None
+                           else detect_graphs_dir(self.root, remembered_graphs_dir(self.root)))
+        self.graphs_dir = self._resolve_graphs(self.graphs_rel)
+        remember_project(self.root, self.graphs_rel)
+
+    @property
+    def graphs_path(self) -> str:
+        """Absolute diagrams directory, for display and registration."""
+        return str(self.graphs_dir)
 
     def resolve(self, rel: str, must_exist: bool = False) -> Path:
         rel = (rel or "").strip().lstrip("/")
@@ -497,7 +667,9 @@ class Workspace:
                         "graph": child.suffix.lower() in GRAPH_EXTS,
                     })
 
-        walk(self.root)
+        # Walk only the diagrams directory, but report paths relative to the
+        # project root so they match what an agent sees from its Location.
+        walk(self.graphs_dir)
         return entries
 
     def snapshot(self) -> dict[str, tuple[float, int]]:
@@ -656,8 +828,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._handle_validate()
             if path == "/api/validate-result" and method == "POST":
                 return self._handle_validate_result()
-            if path == "/api/workspace" and method == "POST":
+            if path in ("/api/workspace", "/api/project") and method == "POST":
                 return self._handle_set_workspace()
+            if path == "/api/project/setup" and method == "POST":
+                return self._handle_project_setup()
             if path == "/api/events" and method == "GET":
                 return self._handle_events()
             if path == "/api/focus" and method == "POST":
@@ -686,6 +860,10 @@ class Handler(BaseHTTPRequestHandler):
             "version": VERSION,
             "workspace": str(self.workspace.root),
             "workspaceName": self.workspace.root.name,
+            "project": str(self.workspace.root),
+            "projectName": self.workspace.root.name,
+            "graphsDir": self.workspace.graphs_rel,
+            "graphsPath": self.workspace.graphs_path,
             "oc": {
                 "ok": ok,
                 "version": ver,
@@ -749,19 +927,118 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"from": self.workspace.rel(src), "to": self.workspace.rel(dst)})
 
     def _handle_set_workspace(self) -> None:
+        """Point the editor at a project root; diagrams dir is detected."""
         payload = self._read_json()
-        raw = os.path.expanduser(payload.get("dir", ""))
+        raw = os.path.expanduser(payload.get("dir") or payload.get("project") or "")
         target = Path(raw)
         if not target.is_absolute():
             target = (self.workspace.root / target)
         target = target.resolve()
         if not target.is_dir():
             return self._error(400, f"not a directory: {target}")
-        self.workspace.set_root(target)
+        graphs_rel = payload.get("graphsDir")
+        self.workspace.set_root(target, graphs_rel)
         self.server.watcher._rebaseline()  # type: ignore[attr-defined]
-        write_registration(self.server, str(target))
-        self.hub.publish("workspace-changed", {"root": str(target)})
-        self._json({"workspace": str(target)})
+        write_registration(self.server)
+        self.hub.publish("workspace-changed",
+                         {"root": str(target), "graphsDir": self.workspace.graphs_rel})
+        self._json(self._project_payload(target))
+
+    def _project_payload(self, project: Path) -> dict:
+        return {
+            "project": str(project),
+            "workspace": str(project),
+            "graphsDir": self.workspace.graphs_rel,
+            "graphsPath": self.workspace.graphs_path,
+            "projectName": project.name,
+        }
+
+    def _handle_project_setup(self) -> None:
+        """Inspect, preview or apply the diagram + agent-awareness setup.
+
+        `preview: true` reports what would happen and changes nothing. Applying
+        creates the diagrams directory (guards permitting) and writes the
+        marker-delimited awareness block into AGENTS.md and the nested
+        conventions file. `unwire: true` removes those blocks instead.
+        """
+        payload = self._read_json()
+        raw = os.path.expanduser(payload.get("project") or str(self.workspace.root))
+        project = Path(raw).resolve()
+        if not project.is_dir():
+            return self._error(400, f"not a directory: {project}")
+
+        preview = bool(payload.get("preview"))
+        unwire = bool(payload.get("unwire"))
+        create_graphs = payload.get("createGraphs", True) is not False
+
+        graphs_rel = detect_graphs_dir(project, remembered_graphs_dir(project))
+        graphs_dir = project if graphs_rel in ("", ".") else (project / graphs_rel)
+        graphs_existed = graphs_dir.is_dir()
+        graphs_created = False
+        if not graphs_existed and create_graphs and not unwire and not preview:
+            try:
+                graphs_dir.mkdir(parents=True, exist_ok=True)
+                graphs_created = True
+            except OSError as exc:
+                return self._error(500, f"cannot create {graphs_dir}: {exc}")
+
+        files: list[dict] = []
+        preview_content: dict[str, str] = {}
+        # When diagrams live at the root there is only one file worth writing:
+        # the nested conventions file would collide with it.
+        targets: list[tuple[str, Path, str]] = []
+        nested = graphs_rel not in ("", ".")
+        root_block = root_awareness_block(graphs_rel, nested)
+        targets.append(("AGENTS.md", project / "AGENTS.md",
+                        strip_block if unwire else root_block))
+        if nested:
+            nested_path = graphs_dir / "AGENTS.md"
+            targets.append((f"{graphs_rel}/AGENTS.md", nested_path,
+                            strip_block if unwire else conventions_block()))
+
+        for rel, path, produce in targets:
+            existing = read_text_or_none(path)
+            if produce is strip_block:
+                updated = strip_block(existing)
+            else:
+                updated = upsert_block(existing, produce)
+            existed = existing is not None
+            if unwire:
+                action = "unchanged" if not is_wired(existing) else "unwired"
+            elif is_wired(existing) and existing == updated:
+                action = "unchanged"
+            else:
+                action = "updated" if existed else "created"
+            preview_content[rel] = updated
+            if not preview and not (unwire and not is_wired(existing)):
+                if updated == "" and existed:
+                    path.unlink(missing_ok=True)
+                    action = "unwired" if unwire else action
+                elif updated:
+                    path.write_text(updated, encoding="utf-8")
+            files.append({"path": rel, "action": action, "wired": is_wired(updated)})
+
+        wired = any(entry["wired"] for entry in files)
+        if not preview:
+            remember_project(project, graphs_rel)
+        if not preview and str(project) == str(self.workspace.root):
+            # keep the active workspace in step with the diagrams dir we detected
+            self.workspace.set_root(project, graphs_rel)
+            self.server.watcher._rebaseline()  # type: ignore[attr-defined]
+            write_registration(self.server)
+
+        result = self._project_payload(project)
+        result.update({
+            "graphsDir": graphs_rel,
+            "graphsPath": str(graphs_dir),
+            "graphsExisted": graphs_existed,
+            "graphsCreated": graphs_created,
+            "wired": wired,
+            "files": files,
+        })
+        if preview or payload.get("includePreview"):
+            result["preview"] = preview_content
+        self._json(result)
 
     def _handle_dirs(self, query: dict) -> None:
         """Browse directories anywhere on the machine (loopback, single user).
@@ -1012,6 +1289,13 @@ class BridgeServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def handle_error(self, request, client_address) -> None:
+        """Clients closing a tab is normal; don't dump a traceback for it."""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionResetError, BrokenPipeError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
     def __init__(self, addr, handler, workspace: Workspace, hub: Hub,
                  oc: OpenCode, default_workspace: Path,
                  default_model: dict | None = None):
@@ -1050,7 +1334,7 @@ def find_free_port(host: str, preferred: int) -> int:
     raise RuntimeError("no free port found")
 
 
-def write_registration(server, workspace: str | None = None) -> None:
+def write_registration(server) -> None:
     """Publish where this bridge is listening so the OpenCode plugin can find it.
 
     Several bridges can run at once (a second one on another port, a test
@@ -1066,7 +1350,9 @@ def write_registration(server, workspace: str | None = None) -> None:
         "port": port,
         "pid": os.getpid(),
         "version": VERSION,
-        "workspace": workspace or str(server.workspace.root),
+        "project": str(server.workspace.root),
+        "graphsDir": server.workspace.graphs_rel,
+        "workspace": str(server.workspace.root),
         "started": time.time(),
     }
     try:
@@ -1098,24 +1384,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="opencode-mermaid local bridge")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--workspace", default=None,
-                        help="workspace directory (default: ./graphs or cwd)")
+    parser.add_argument("--project", "--workspace", dest="project", default=None,
+                        help="project root holding your diagrams (default: this checkout)")
     parser.add_argument("--oc-url", default=None, help="OpenCode server URL override")
     parser.add_argument("--model", default=DEFAULT_MODEL,
                         help=f"default chat model as provider/model#variant (default: {DEFAULT_MODEL})")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
-    if args.workspace:
-        workspace_dir = Path(args.workspace).expanduser().resolve()
-    else:
-        graphs = REPO_ROOT / "graphs"
-        workspace_dir = graphs if graphs.is_dir() else Path.cwd()
-    if not workspace_dir.is_dir():
-        workspace_dir.mkdir(parents=True, exist_ok=True)
+    project_dir = (Path(args.project).expanduser().resolve()
+                   if args.project else REPO_ROOT)
+    if not project_dir.is_dir():
+        project_dir.mkdir(parents=True, exist_ok=True)
 
     port = find_free_port(args.host, args.port)
-    server = build_server(args.host, port, workspace_dir, args.oc_url, args.model)
+    server = build_server(args.host, port, project_dir, args.oc_url, args.model)
     server.watcher.start()
     write_registration(server)
 
@@ -1123,7 +1406,8 @@ def main() -> int:
     oc_state = "connected" if server.oc.configured else "not discovered"
     print(f"opencode-mermaid {VERSION}")
     print(f"  editor    {url}")
-    print(f"  workspace {workspace_dir}")
+    print(f"  project   {project_dir}")
+    print(f"  diagrams  {server.workspace.graphs_path}")
     print(f"  opencode  {oc_state} ({server.oc.url or 'n/a'})")
     print(f"  plugin    {registration_path()}")
     print("  press Ctrl+C to stop")

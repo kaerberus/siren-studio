@@ -58,9 +58,12 @@ async function boot() {
     toast(`Bridge unreachable: ${err.message}`, 'err');
     return;
   }
-  state.workspace = state.config.workspace;
-  $('workspace-label').textContent = state.config.workspaceName || state.workspace;
-  $('files-root').textContent = `/${state.config.workspaceName || ''}`;
+  state.workspace = state.config.project || state.config.workspace;
+  state.graphsDir = state.config.graphsDir || '.';
+  $('workspace-label').textContent = state.config.projectName || state.workspace;
+  $('files-root').textContent = state.graphsDir === '.'
+    ? `/${state.config.projectName || ''}`
+    : `${state.config.projectName || ''}/${state.graphsDir}`;
   $('status-mermaid').textContent = 'mermaid 11';
   updateOcStatus();
 
@@ -69,7 +72,12 @@ async function boot() {
       'file-changed': onFileChanged,
       'file-created': () => refreshTree(),
       'file-deleted': onFileDeleted,
-      'workspace-changed': (data) => { state.workspace = data.root; refreshTree(); },
+      'workspace-changed': (data) => {
+        state.workspace = data.root;
+        if (data.graphsDir) state.graphsDir = data.graphsDir;
+        refreshTree();
+        refreshAwarenessState();
+      },
       focus: (data) => { if (data.path) openFile(data.path); },
       'validate-request': onValidateRequest,
     },
@@ -77,6 +85,7 @@ async function boot() {
   );
 
   await refreshTree();
+  refreshAwarenessState();
   const model = await loadModels();
   await startAgent(model);
 
@@ -884,6 +893,7 @@ function wireUI() {
   $('btn-present').onclick = present;
 
   $('btn-open-workspace').onclick = openWorkspaceModal;
+  $('btn-awareness').onclick = openAwarenessModal;
   $('btn-gaps-edit').onclick = editLedger;
 
   // splitter
@@ -1024,10 +1034,11 @@ function promptModal({ title, label, value = '' }) {
 }
 
 async function newFileModal() {
+  const dir = state.graphsDir && state.graphsDir !== '.' ? `${state.graphsDir}/` : '';
   const name = await promptModal({
     title: 'New diagram',
-    label: 'File name (relative to workspace)',
-    value: 'flowchart.mmd',
+    label: `File name (relative to ${dir || 'the project root'})`,
+    value: `${dir}flowchart.mmd`,
   });
   if (!name) return;
   const path = name.includes('.') ? name : `${name}.mmd`;
@@ -1041,17 +1052,103 @@ async function newFileModal() {
   }
 }
 
+// ── agent awareness ────────────────────────────────────────────────────────
+
+/** Does this project already tell other agents that graphs/ is intent? */
+async function refreshAwarenessState() {
+  const button = $('btn-awareness');
+  if (!button) return;
+  try {
+    const info = await bridge.setupProject(state.workspace,
+      { preview: true, createGraphs: false });
+    button.dataset.info = JSON.stringify({
+      graphsDir: info.graphsDir, wired: info.wired, files: info.files,
+    });
+    button.textContent = info.wired ? 'Agents aware ✓' : 'Make agents aware';
+    button.classList.toggle('wired', Boolean(info.wired));
+  } catch (_) {
+    button.textContent = 'Make agents aware';
+    button.classList.remove('wired');
+  }
+}
+
+async function openAwarenessModal() {
+  let info;
+  try {
+    info = await bridge.setupProject(state.workspace,
+      { preview: true, includePreview: true, createGraphs: false });
+  } catch (err) {
+    toast(`Cannot inspect project: ${err.message}`, 'err');
+    return;
+  }
+  const where = info.graphsDir === '.' ? 'this project root' : `${info.graphsDir}/`;
+  const files = (info.files || []).map((f) => (
+    `<li><code>${escapeHtml(f.path)}</code> — ${escapeHtml(f.action)}`
+    + `${f.wired ? ', aware' : ''}</li>`
+  )).join('');
+  const block = info.preview?.['AGENTS.md'] || '(already written — preview hidden)';
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal modal-lg">
+      <h3>Agent awareness</h3>
+      <p>How other agents learn that <code>${escapeHtml(where)}</code> is design intent.</p>
+      <div class="aware-files"><ul>${files}</ul></div>
+      <pre class="aware-preview">${escapeHtml(block)}</pre>
+      <div class="modal-actions">
+        <button class="cancel" id="aware-cancel" type="button">Close</button>
+        ${info.wired ? '<button class="cancel" id="aware-unwire" type="button">Unwire</button>' : ''}
+        <button class="confirm" id="aware-apply" type="button">${info.wired ? 'Update' : 'Wire up'}</button>
+      </div>
+    </div>`;
+  const close = () => backdrop.remove();
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('#aware-cancel').onclick = close;
+  backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close(); });
+
+  backdrop.querySelector('#aware-apply').onclick = async () => {
+    close();
+    try {
+      const result = await bridge.setupProject(state.workspace, {});
+      const wrote = (result.files || []).map((f) => `${f.path} (${f.action})`).join(', ');
+      toast(`Agents aware: ${wrote}`, 'ok');
+    } catch (err) {
+      toast(`Could not wire awareness: ${err.message}`, 'err');
+    }
+    await refreshAwarenessState();
+  };
+
+  const unwire = backdrop.querySelector('#aware-unwire');
+  if (unwire) {
+    unwire.onclick = async () => {
+      close();
+      try {
+        await bridge.setupProject(state.workspace, { unwire: true });
+        toast('Agent awareness removed', 'ok');
+      } catch (err) {
+        toast(`Could not unwire: ${err.message}`, 'err');
+      }
+      await refreshAwarenessState();
+    };
+  }
+}
+
 /** Apply a chosen workspace directory. */
 async function useWorkspace(dir) {
   try {
     const result = await bridge.setWorkspace(dir);
-    state.workspace = result.workspace;
+    state.workspace = result.project || result.workspace;
+    state.graphsDir = result.graphsDir || '.';
     state.tabs = [];
     state.active = null;
     editor.setValue('');
-    $('workspace-label').textContent = result.workspace.split('/').pop();
-    $('files-root').textContent = `/${result.workspace.split('/').pop()}`;
+    $('workspace-label').textContent = result.projectName || state.workspace.split('/').pop();
+    $('files-root').textContent = state.graphsDir === '.'
+      ? `/${result.projectName || ''}`
+      : `${result.projectName || ''}/${state.graphsDir}`;
     await refreshTree();
+    refreshAwarenessState();
     // Sessions are location-scoped, so start a fresh one for the new workspace.
     if (agent) {
       agent.reset();
@@ -1077,8 +1174,8 @@ async function openWorkspaceModal() {
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
     <div class="modal modal-lg">
-      <h3>Open workspace</h3>
-      <p>The editor and the Graph Engineer read and write in this folder.</p>
+      <h3>Open project</h3>
+      <p>Pick the project root. Diagrams live in a directory inside it.</p>
       <div class="dir-bar">
         <button class="mini-btn" id="dir-up" type="button" title="Parent folder">↑</button>
         <button class="mini-btn" id="dir-home" type="button" title="Home folder">~</button>
@@ -1088,12 +1185,19 @@ async function openWorkspaceModal() {
       </div>
       <div class="dir-shortcuts" id="dir-shortcuts"></div>
       <div class="dir-list" id="dir-list"></div>
+      <div class="setup-row">
+        <label class="ctx-toggle">
+          <input type="checkbox" id="dir-setup" checked />
+          <span id="dir-setup-label">Set up for diagrams</span>
+        </label>
+        <span class="setup-note" id="dir-setup-note"></span>
+      </div>
       <div class="dir-foot">
         <button class="mini-btn labeled" id="dir-new" type="button">New folder…</button>
         <button class="mini-btn labeled" id="dir-native" type="button" hidden>System dialog…</button>
         <span class="spacer"></span>
         <button class="cancel" id="dir-cancel" type="button">Cancel</button>
-        <button class="confirm" id="dir-use" type="button">Use this folder</button>
+        <button class="confirm" id="dir-use" type="button">Use this project</button>
       </div>
     </div>`;
 
@@ -1138,6 +1242,7 @@ async function openWorkspaceModal() {
       row.onclick = () => load(entry.path);
       listEl.appendChild(row);
     }
+    refreshSetupHint().catch(() => {});
   }
 
   upBtn.onclick = () => parent && load(parent);
@@ -1182,8 +1287,43 @@ async function openWorkspaceModal() {
   }
 
   backdrop.querySelector('#dir-cancel').onclick = close;
+
+  // The checkbox defaults from what is already in the folder, so a fresh
+  // project gets set up in one gesture while a real project is never edited
+  // without a deliberate tick.
+  const setupBox = backdrop.querySelector('#dir-setup');
+  const setupNote = backdrop.querySelector('#dir-setup-note');
+  async function refreshSetupHint() {
+    try {
+      const state_ = await bridge.setupProject(current, { preview: true });
+      const files = state_.files || [];
+      const wired = state_.wired;
+      const willCreate = !state_.graphsExisted;
+      const parts = [];
+      parts.push(willCreate ? `will create ${state_.graphsDir}/` : `diagrams: ${state_.graphsDir}/`);
+      parts.push(wired ? 'agents already aware' : 'will make agents aware');
+      setupNote.textContent = parts.join(' · ');
+      setupBox.checked = !wired || willCreate;
+      setupBox.dataset.wired = wired ? '1' : '';
+    } catch (err) {
+      setupNote.textContent = err.message;
+    }
+  }
+
   backdrop.querySelector('#dir-use').onclick = async () => {
+    const setUp = setupBox.checked;
     close();
+    if (setUp) {
+      try {
+        const result = await bridge.setupProject(current, {});
+        const created = result.graphsCreated ? `created ${result.graphsDir}/` : `diagrams in ${result.graphsDir}/`;
+        setStatusMsg(
+          `${created} · ${result.wired ? 'agents aware' : 'awareness not written'}`,
+        );
+      } catch (err) {
+        toast(`Setup failed: ${err.message}`, 'err');
+      }
+    }
     await useWorkspace(current).catch(() => {});
   };
   backdrop.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });

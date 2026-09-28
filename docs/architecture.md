@@ -52,7 +52,9 @@ the agent sees exactly what is on screen, including unsaved edits.
 | GET | `/` and `/...` | static app files |
 | GET | `/health` | bridge + OpenCode status |
 | GET | `/api/config` | workspace, OpenCode status, agent list, default model |
-| GET | `/api/fs/tree` | workspace tree |
+| POST | `/api/project` | point the editor at a project root (alias `/api/workspace`) |
+| POST | `/api/project/setup` | inspect, preview, apply or unwire agent awareness |
+| GET | `/api/fs/tree` | diagrams tree (paths relative to the project root) |
 | GET | `/api/fs/file?path=` | read a file |
 | PUT | `/api/fs/file` | write a file (broadcasts `file-changed`) |
 | DELETE | `/api/fs/file?path=` | delete a file |
@@ -108,6 +110,44 @@ A local plugin file has no `node_modules`, so it must not import
 `@opencode/plugin`; OpenCode only requires the default export to be an object
 with an `id` and a `setup` (or `effect`) function. Local plugin files are cached
 in the running server, so the first load needs `opencode service restart`.
+
+## Project root vs diagrams directory
+
+The bridge tracks two paths, and the distinction matters:
+
+- **project root** — the OpenCode session Location, where `AGENTS.md` lives.
+- **diagrams directory** — where the `.mmd` files live, default `graphs/`,
+  relative to the root.
+
+The file API is rooted at the **project root** and the watcher/tree are scoped to
+the **diagrams directory**. That way an agent (whose Location is the root) and
+the editor agree on every path: `graphs/03-payment.mmd` for both.
+
+`detect_graphs_dir()` resolves the diagrams directory in a fixed order — a
+previously remembered choice, then an existing `graphs/`, then diagrams at the
+root (which prevents `graphs/graphs/` when someone points the editor at their
+existing diagrams directory), then diagrams found elsewhere. Only when none of
+those apply is `graphs/` created. Choices are persisted per project in
+`~/.local/state/opencode-mermaid/projects.json`, because detection cannot see an
+empty directory.
+
+## Agent awareness
+
+`POST /api/project/setup` generates the instruction files, wrapped in
+`<!-- graph-awareness:start -->` / `<!-- graph-awareness:end -->`. The upsert replaces
+only the marked region, so a user's own text is never touched and re-running is
+idempotent. `unwire: true` removes the region. `preview: true` computes the
+result without writing.
+
+Two files, which is the only conditionality the mechanism allows:
+
+- `<root>/AGENTS.md` — loaded before the agent starts, so it is the pointer.
+- `<root>/graphs/AGENTS.md` — nested, loaded when an agent first reads a file in
+  the diagrams directory.
+
+Root-level `AGENTS.md` is injected into *every* agent in the project; there is no
+per-agent syntax. When the diagrams directory is the root itself there is only
+one file, since the nested path would collide.
 
 ## Who may touch the graph
 

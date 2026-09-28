@@ -35,6 +35,7 @@ export const bridge = {
   validateResult: (nonce, result) => request('POST', '/api/validate-result',
     { nonce, ok: result.ok, errors: result.errors }),
   setWorkspace: (dir) => request('POST', '/api/workspace', { dir }),
+  setupProject: (project, options = {}) => request('POST', '/api/project/setup', { project, ...options }),
   focus: (path) => request('POST', '/api/focus', { path }),
   openInOS: (path) => request('POST', '/api/open', { path }),
 
