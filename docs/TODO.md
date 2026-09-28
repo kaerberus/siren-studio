@@ -3,8 +3,8 @@
 Written 2026-09-28 to survive a context compaction. Read `README.md` and
 `docs/architecture.md` first; this file only holds what they don't.
 
-**Status: items 1–8 are done.** Outstanding: the README pass (9), and the child
-viewport deferred under item 6.
+**Status: everything is done except 9 (the README pass).** Also outstanding: the
+child viewport deferred under item 6.
 
 ## Running it
 
@@ -19,7 +19,12 @@ python3 start.py --project ~/code/some-project
 - Tests: `tests/bootstrap.sh` once, then `tests/run.sh` — it starts an isolated
   bridge on 8788 against a throwaway workspace. See `tests/README.md`.
 - `opencode service restart` is required after **plugin** changes (local plugin
-  files are cached in the running server). Agents and skills reload automatically.
+  files are cached in the running server) and after **agent permission** changes:
+  the tool catalog is snapshotted per service process. Measured, not inferred — a
+  four-hour-old service still offered a tool the agent's frontmatter had just
+  denied, while a freshly started one did not. An agent's *prompt* is re-read per
+  turn, so prose edits do land live; only its tool surface goes stale. Skills
+  reload automatically.
 - If the bridge was started from inside an agent's shell, restarting the OpenCode
   service kills it. Starting it from your own terminal survives that.
 
@@ -269,8 +274,33 @@ confirmed by reading it rather than patching from this list:
   a diagram now **opens that file**; jumping to source is the fallback.
 - The `Sub[[see 03-payment.mmd]]` idiom appears without explanation of what makes
   it a link, or that a reference to a missing file is dead.
-- Nothing about the agent-panel splitter, or that Send steers a running turn.
+- Nothing about the agent-panel splitter, or that Send steers a running turn
+  (the composer hint says "Ctrl+Enter to steer", but the README doesn't mention
+  steering at all).
+- `README.md:331` says "OpenCode re-reads agents and skills on reload". Mostly
+  true, but agent **permissions** need a service restart — see the note in
+  "Running it" in `docs/TODO.md`.
 - `tests/` has its own README but nothing in the main README points at it.
+
+### 10. ~~Hide `question` from the graph engineer; advertise steering~~ — DONE
+
+`question` is a real OpenCode built-in (`packages/opencode/src/tool/question.ts`):
+its `execute` blocks until the user answers a multiple-choice picker. The editor
+has no picker, so the turn waits forever — which is the stalled turn from item 7
+seen from the other side. It is on by default here because `flags.client` falls
+back to `"cli"`, which is in the enable-list.
+
+`graph-engineer.md` now denies it the same way the global config denies
+`graph_*`, per-agent on purpose so the TUI keeps the tool. Verified in
+`permissions-e2e.py`: on a fresh server the agent searches its own Code Mode
+catalog for "question" and finds nothing, while `graph.validate` still works in
+the same turn as the positive control. **The running service needs a restart to
+pick it up** (see "Running it").
+
+Also: Send is no longer disabled while a turn runs, and the composer says so —
+placeholder *"Model is running — send a message to steer it…"*, hint
+*"Ctrl+Enter to steer"*. `composerCopy(busy, idlePlaceholder)` holds both states
+and is checked in smoke.
 
 ## Notes that are easy to forget
 

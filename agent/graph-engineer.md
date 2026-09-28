@@ -23,6 +23,13 @@ permissions:
   - action: shell
     resource: "*"
     effect: deny
+  # The editor has no picker for `question`, so the turn would block waiting on
+  # an answer that cannot arrive; it asks in prose with a default instead (see
+  # Output discipline), which is the same thing a multiple-choice list would
+  # produce. Per-agent on purpose: the TUI keeps the tool.
+  - action: question
+    resource: "*"
+    effect: deny
   - action: graph_validate
     resource: "*"
     effect: allow

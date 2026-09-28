@@ -96,6 +96,16 @@ def tool_blob(messages):
     return "\n".join(chunks)
 
 
+def tool_names(messages):
+    """Every tool the agent actually invoked this turn."""
+    return {
+        part.get("name")
+        for message in messages if message["type"] == "assistant"
+        for part in message.get("content", [])
+        if part["type"] == "tool"
+    }
+
+
 def assistant_text(messages):
     return "\n".join(
         part.get("text") or ""
@@ -243,6 +253,36 @@ try:
     check("ALLOW: write works when the workspace is the diagrams directory",
           os.path.exists(os.path.join(WORKSPACE, "graphs/probe-graphdir.mmd")),
           graphs_text.strip()[:120].replace("\n", " "))
+
+    # ── graph-engineer: the `question` tool is withheld ─────────────────────
+    # The editor has no picker for it, so a turn that calls it blocks forever on
+    # an answer that cannot arrive. graph.validate is the positive control: if
+    # *no* tools came back, a missing `question` would prove nothing.
+    question_session = make_session(password, "graph-engineer", "question tool test")
+    question_messages = run_turn(
+        password, question_session,
+        "Do these two things and report each result verbatim:\n"
+        "1. Call the graph.validate tool with source \"flowchart TD\\n    A --> B\\n\".\n"
+        "2. Call the `question` tool to ask me a one-question multiple-choice question.\n"
+        "If you do not have a tool named `question`, do not substitute anything - "
+        "reply exactly \"NO QUESTION TOOL\" for step 2 and move on.",
+    )
+    invoked = tool_names(question_messages)
+    question_blob = tool_blob(question_messages)
+    question_text = assistant_text(question_messages)
+    check("ALLOW: graph.validate still works alongside it",
+          "checked by" in tool_output_text(question_messages).lower(),
+          ", ".join(sorted(t for t in invoked if t)) or "no tools called")
+    # This agent runs in Code Mode, so tools are reached through `execute` and a
+    # withheld tool never shows up as a top-level name - the evidence is that the
+    # agent cannot write the call, and says so when asked point-blank.
+    check("DENY: graph-engineer cannot call the question tool",
+          not re.search(r"tools?\.question\b|tools\[\s*[\"']question", question_blob),
+          question_blob.strip()[:160].replace("\n", " "))
+    check("DENY: and reports it missing when asked to use it",
+          bool(re.search(r"no question tool", question_text, re.I)),
+          question_text.strip()[:160].replace("\n", " "))
+    print("    question turn said:", question_text.strip()[:220].replace("\n", " "))
 
     # ── build: denied the graph tools ───────────────────────────────────────
     build_session = make_session(password, "build", "build perm test")

@@ -240,17 +240,33 @@ function openModelPalette() {
   render();
 }
 
+/**
+ * Copy for the composer in each state. Sending mid-turn steers the run, so a
+ * busy composer says so rather than silently disabling Send.
+ */
+function composerCopy(busy, idlePlaceholder) {
+  return busy
+    ? { placeholder: 'Model is running — send a message to steer it…', hint: 'Ctrl+Enter to steer' }
+    : { placeholder: idlePlaceholder, hint: 'Ctrl+Enter to send' };
+}
+
 async function startAgent(model) {
+  // index.html owns the idle placeholder; remember it before anything swaps it.
+  const chatInput = $('chat-input');
+  if (!chatInput.dataset.idlePlaceholder) {
+    chatInput.dataset.idlePlaceholder = chatInput.placeholder;
+  }
   agent = createAgent({
     logEl: $('chat-log'),
     onStatus: (text) => { $('agent-sub').textContent = text; },
     onBusy: (busy) => {
-      // Sending mid-turn steers the run (`delivery: 'steer'`), and the agent may
-      // be waiting on an answer to a question it asked. So Send stays available
-      // and Stop is the affordance for a busy turn; disabling Send would trap
-      // the user mid-question.
+      // Sending mid-turn steers the run (`delivery: 'steer'`), so a busy turn says
+      // so rather than disabling the box - the agent may also be waiting on an
+      // answer to a question it asked. Stop is the affordance for a busy turn.
+      const copy = composerCopy(busy, chatInput.dataset.idlePlaceholder);
+      chatInput.placeholder = copy.placeholder;
+      $('composer-hint').textContent = copy.hint;
       $('chat-stop').hidden = !busy;
-      $('composer-hint').textContent = busy ? 'Ctrl+Enter to steer' : 'Ctrl+Enter to send';
       document.querySelector('.agent-orb')?.classList.toggle('busy', busy);
     },
     onMessages: renderChat,
@@ -1706,5 +1722,6 @@ window.__mermaidStudio = {
   openModelPalette,
   setModelRef,
   modelEntries,
+  composerCopy,
   get blocks() { return state.pendingBlocks; },
 };

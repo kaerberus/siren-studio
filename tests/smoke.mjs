@@ -395,6 +395,21 @@ if (cm) {
   } catch (err) { check('cross-file link block', false, err.message); }
 }
 
+// the composer advertises steering while a turn is running
+try {
+  const idle = studio.composerCopy(false, 'IDLE-PLACEHOLDER');
+  const busy = studio.composerCopy(true, 'IDLE-PLACEHOLDER');
+  check('idle composer copy invites a prompt',
+    idle.placeholder === 'IDLE-PLACEHOLDER' && idle.hint === 'Ctrl+Enter to send',
+    JSON.stringify(idle));
+  check('busy composer copy advertises steering',
+    /steer/i.test(busy.placeholder) && busy.hint === 'Ctrl+Enter to steer',
+    JSON.stringify(busy));
+  check('the idle placeholder is the shipped one',
+    /Graph Engineer/.test(document.querySelector('#chat-input').placeholder),
+    document.querySelector('#chat-input').placeholder);
+} catch (err) { check('composer copy block', false, err.message); }
+
 // lint path
 try {
   const annotations = await window.mermaid.parse('flowchart TD\n    A[unclosed\n');
