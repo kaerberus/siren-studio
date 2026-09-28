@@ -6,7 +6,7 @@ import {
   initViewer, render as renderGraph, setTheme as setMermaidTheme, fit, zoom,
   exportSvg, exportPng, lintMermaid, highlightNode, clearHighlight,
   setEmptyVisible, focusNode, resetView, parseSource, setSmartView, isTransposed,
-  getRenderedSource,
+  getRenderedSource, markNodeLinks,
 } from './viewer.js';
 import { createAgent, extractAssistant, splitPrompt, toolLabel } from './agent.js';
 
@@ -495,6 +495,31 @@ function closeTab(key) {
   }
 }
 
+// A node label may name another diagram ("see 03-payment.mmd"). Resolve that to
+// a path in this workspace so the node can link to it. Only real files resolve:
+// a reference the agent has not written yet stays a plain node.
+const isDiagramPath = (path) => /\.(?:mmd|mermaid)$/i.test(path || '');
+
+function resolveDiagramRef(label) {
+  const name = String(label || '').split(/[\s,;:()[\]{}<>"']+/).find(isDiagramPath);
+  if (!name) return null;
+  const diagrams = (state.entries || []).filter((entry) => isDiagramPath(entry.path));
+  if (name.includes('/')) {
+    const path = name.replace(/^\.\//, '');
+    return diagrams.some((entry) => entry.path === path) ? path : null;
+  }
+  // Prefer a sibling of the open file, then any file with that basename. Labels
+  // are prose, so match the basename case-insensitively.
+  const active = findTab(state.active);
+  const here = active?.path?.includes('/')
+    ? active.path.slice(0, active.path.lastIndexOf('/') + 1) : '';
+  const sibling = diagrams.find((entry) => entry.path === `${here}${name}`);
+  if (sibling) return sibling.path;
+  const lower = name.toLowerCase();
+  const byName = diagrams.find((entry) => (entry.path.split('/').pop() || '').toLowerCase() === lower);
+  return byName ? byName.path : null;
+}
+
 async function openFile(path, { silent = false } = {}) {
   const existing = state.tabs.find((t) => t.path === path);
   if (existing) { activateTab(existing.key); return; }
@@ -621,6 +646,7 @@ function scheduleRender(delay = 260) {
     const tab = findTab(state.active);
     if (!tab) return;
     const result = await renderGraph(tab.content);
+    markNodeLinks(resolveDiagramRef);
     updateViewerNote();
     const badge = $('lint-badge');
     if (result.ok) {
@@ -1188,10 +1214,11 @@ function wireUI() {
     button.onclick = () => sendChat(button.dataset.prompt);
   });
 
-  // viewer node click → jump to source
+  // viewer node click → open a referenced diagram, else jump to its source
   $('graph-target').addEventListener('click', (event) => {
     const group = event.target.closest('g.node, g.statediagram-state');
     if (!group) return;
+    if (group.dataset.link) { openFile(group.dataset.link); return; }
     const tab = findTab(state.active);
     if (!tab) return;
     const analysis = analyzeGraph(tab.content);

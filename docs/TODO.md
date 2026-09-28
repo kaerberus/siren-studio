@@ -3,7 +3,8 @@
 Written 2026-09-28 to survive a context compaction. Read `README.md` and
 `docs/architecture.md` first; this file only holds what they don't.
 
-**Status: the whole list below is agreed.** Order is the intended sequence.
+**Status: all six items are done.** The one deferred piece is the child viewport
+under item 6, which the clickable references were meant to justify.
 
 ## Running it
 
@@ -15,6 +16,8 @@ python3 start.py --project ~/code/some-project
 
 - Editor: <http://127.0.0.1:8777/>. The bridge must be running; OpenCode must be
   running for the chat to work.
+- Tests: `tests/bootstrap.sh` once, then `tests/run.sh` — it starts an isolated
+  bridge on 8788 against a throwaway workspace. See `tests/README.md`.
 - `opencode service restart` is required after **plugin** changes (local plugin
   files are cached in the running server). Agents and skills reload automatically.
 - If the bridge was started from inside an agent's shell, restarting the OpenCode
@@ -116,7 +119,13 @@ Worth a look in a real browser: nothing is connected to the review pane, and
 jsdom does no layout, so the checks cover the drag arithmetic and the CSS
 parsing into the expected rules, not the rendered proportions.
 
-### 5. Conventions wording + a size advisory
+### 5. ~~Conventions wording + a size advisory~~ — DONE
+
+Landed as described below. The thresholds are exact: 25 nodes and 5 subgraphs
+stay silent, 26 and 6 warn, and the advisory is a warning even when the diagram
+is otherwise valid. Also fixed the two copies of the old `~20 nodes` rule that
+this item missed — `graph-engineer.md` and `codebase-to-flow.md` — while doing
+item 2.
 
 Two audiences, deliberately separated.
 
@@ -152,15 +161,32 @@ imagined: `lint_mermaid` counts node definitions and subgraphs and emits a
 - The editor can show the same advisory (it already counts nodes for the Outline
   panel), so human and agent see the same signal.
 
-### 6. Clickable `.mmd` references + a child viewport
+### 6. Clickable `.mmd` references — DONE (the child viewport is deferred)
 
-**Goal.** Following a graph-of-graphs by hand is the missing navigation.
-`Sub[[see 03-payment.mmd]]` is currently decorative — Mermaid has no cross-file
-link, and clicking a node just jumps the editor to its source line.
+**Goal.** Following a graph-of-graphs by hand was the missing navigation.
+`Sub[[see 03-payment.mmd]]` was decorative — Mermaid has no cross-file link, and
+clicking a node just jumped the editor to its source line.
 
-**Agreed scope: do the clickable references alone first.** Click a reference and
-open that file in a tab. Small, delivers the navigation, and tells you whether
-the inset earns the viewer refactor. The child viewport is a follow-up.
+**Done: the clickable references alone.** After every render, `markNodeLinks`
+(`viewer.js`) asks `resolveDiagramRef` (`app.js`) to resolve each node's label to
+a path. Matches get a `.node-link` class and `data-link`; the click handler opens
+that file in a tab, and only falls back to jump-to-source when there is no link.
+
+- **Only real files resolve.** A reference the agent has not written yet stays a
+  plain node, so a graph it is about to write does not look clickable already.
+- **Resolution is by basename**, preferring a sibling of the open diagram, then
+  matching case-insensitively anywhere in the diagrams directory. An explicit
+  relative path (`sub/03-payment.mmd`) resolves only if it exists. Labels are
+  prose, so it scans label tokens for one ending in `.mmd`/`.mermaid` rather than
+  matching the whole string.
+- **Discoverability:** a dotted underline on the label plus a pointer cursor, so
+  the link is visible before you hover, and a glow on the node while hovering.
+- **Cycles are a non-issue in the tab model:** `openFile` just activates a tab
+  that is already open, so a self-reference is a no-op.
+
+**Deferred: the child viewport.** The design below is settled for when it earns
+the viewer refactor; the clickable references were the cheap way to find out
+whether it does.
 
 **Design decisions taken (after review), for the follow-up:**
 
@@ -181,11 +207,6 @@ the inset earns the viewer refactor. The child viewport is a follow-up.
 - **Discoverability:** a node is only clickable if its label resolves to a
   `.mmd`/`.mermaid` file in the diagrams directory — cursor + a small marker so
   it isn't hidden.
-
-**Sketch.** After render, scan `g.node` labels for a diagram filename, resolve
-it relative to the diagrams directory, and mark those nodes. Click opens the
-referenced file (tab first; later the child pane), else falls back to today's
-jump-to-source.
 
 ## Notes that are easy to forget
 

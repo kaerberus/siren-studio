@@ -112,12 +112,14 @@ window.mermaid = {
     return true;
   },
   async render(_id, t) {
-    const ids = [];
-    const re = /([A-Za-z_][\w-]*)\s*[\[({]/g;
+    // Capture id + label, so node textContent exists as it does in real Mermaid.
+    const nodesById = new Map();
+    const re = /([A-Za-z_][\w-]*)\s*[\(\[\{]+\s*([^\)\]\}]*?)\s*[\)\]\}]+/g;
     let m;
-    while ((m = re.exec(t))) ids.push(m[1]);
-    const nodes = [...new Set(ids)].slice(0, 10)
-      .map((n, i) => `<g class="node" id="flowchart-${n}-${i}" data-id="${n}"><rect width="60" height="30"/></g>`).join('');
+    while ((m = re.exec(t))) if (!nodesById.has(m[1])) nodesById.set(m[1], m[2]);
+    const nodes = [...nodesById].slice(0, 10)
+      .map(([n, label], i) => `<g class="node" id="flowchart-${n}-${i}" data-id="${n}">`
+        + `<rect width="60" height="30"/><text>${label}</text></g>`).join('');
     // Mimic mermaid's real root: width="100%", no height, negative-origin viewBox.
     return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="100%" class="flowchart" style="max-width: 400px;" viewBox="-8 -8 400 200">${nodes}</svg>` };
   },
@@ -358,6 +360,39 @@ try {
     /flowchart LR/.test(foldText) && !foldText.includes('```'));
 } catch (err) {
   check('chat rendering block', false, err.message);
+}
+
+// cross-file links: a node whose label names a diagram opens that file
+if (cm) {
+  try {
+    await studio.bridge.write('child.mmd', 'flowchart LR\n    X --> Y\n');
+    if (!state.entries.some((e) => e.path === 'child.mmd')) {
+      state.entries.push({ path: 'child.mmd', name: 'child.mmd', type: 'file' });
+    }
+    const linkSrc = 'flowchart TD\n    A([Start]) --> Sub[[see child.mmd]]\n'
+      + '    Sub --> Gone[[see missing.mmd]]\n';
+    cm.replaceRange(linkSrc, { line: 0, ch: 0 }, { line: cm.lineCount(), ch: 0 }, '+input');
+    await new Promise((r) => setTimeout(r, 900));
+
+    const nodes = [...document.querySelectorAll('#graph-target g.node')];
+    const linked = nodes.find((g) => g.dataset.link);
+    check('a node naming a diagram file becomes a link',
+      Boolean(linked) && linked.dataset.link === 'child.mmd',
+      linked ? `${linked.dataset.id} -> ${linked.dataset.link}` : 'no link found');
+    check('a reference to a missing file stays a plain node',
+      !nodes.some((g) => g.dataset.id === 'Gone' && g.classList.contains('node-link')));
+    check('an ordinary node stays a plain node',
+      !nodes.some((g) => g.dataset.id === 'A' && g.classList.contains('node-link')));
+
+    const opened = () => state.tabs.some((t) => t.path === 'child.mmd');
+    check('the referenced file is not open before the click', !opened());
+    if (linked) {
+      linked.querySelector('text').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+      check('clicking a linked node opens the referenced file',
+        opened() && state.active === 'child.mmd', `active=${state.active} opened=${opened()}`);
+    }
+  } catch (err) { check('cross-file link block', false, err.message); }
 }
 
 // lint path

@@ -506,6 +506,28 @@ export function clearHighlight() {
   if (el) el.querySelectorAll('.node-highlight').forEach((n) => n.classList.remove('node-highlight'));
 }
 
+// ── cross-file links ───────────────────────────────────────────────────────
+/**
+ * Mark nodes whose label names another diagram file, so the caller can open it
+ * on click. `resolve(label)` returns the path to link to, or nullish to leave
+ * the node alone. Existing marks are cleared first: the graph re-renders on
+ * every edit and a reference may have been renamed away.
+ */
+export function markNodeLinks(resolve) {
+  const marked = [];
+  for (const { id, el } of getNodeElements()) {
+    el.classList.remove('node-link');
+    delete el.dataset.link;
+    const label = (el.textContent || '').trim();
+    const path = label ? resolve(label) : null;
+    if (!path) continue;
+    el.classList.add('node-link');
+    el.dataset.link = path;
+    marked.push({ id, path });
+  }
+  return marked;
+}
+
 // ── export ─────────────────────────────────────────────────────────────────
 function svgMarkup() {
   const el = svgEl();
