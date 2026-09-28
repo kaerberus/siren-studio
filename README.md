@@ -111,11 +111,14 @@ effort variants. Your choice is remembered and applied to the session
 immediately. Free models on OpenCode Zen are intermittently flaky — if a turn
 produces nothing, see below.
 
+**Sessions.** The editor reuses one session per workspace rather than creating a
+new one on every page load. **New session** in the panel header starts a fresh
+conversation (titled after the open diagram); the status line shows the model
+and a short session id so you can tell them apart.
+
 **Stuck turns are visible.** A turn that produces no output for 45s is reported
 with a *"No output from `<model>` yet — Retry / Stop"* bar instead of spinning
 forever, and a reply that completes with no content says so and offers Retry.
-The editor reuses one session per workspace rather than creating a new one on
-every page load.
 
 ### The skill
 

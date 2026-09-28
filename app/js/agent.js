@@ -25,10 +25,13 @@ export function createAgent({
   let refreshTimer = null;
   let running = false;
 
-  let turn = null;            // { startedAt, lastContentAt, lastKey, stalled, notifiedEmpty }
+  let turn = null;            // see beginTurn()
   let lastRequest = null;     // { text, context } for Retry
+  let assistantCount = 0;     // assistant messages seen in the session so far
 
   const modelLabel = () => (model ? `${model.providerID}/${model.id}${model.variant ? `#${model.variant}` : ''}` : 'default model');
+  const shortId = () => (sessionId ? sessionId.replace(/^ses_/, '').slice(0, 6) : '');
+  const readyLabel = () => `ready · ${modelLabel()}${shortId() ? ` · ${shortId()}` : ''}`;
   const notice = (value) => { if (onNotice) onNotice(value); };
 
   function setStatus(text) { if (onStatus) onStatus(text); }
@@ -54,22 +57,52 @@ export function createAgent({
     }
   }
 
-  async function ensureSession() {
-    if (sessionId) return sessionId;
-    const reused = await findReusableSession();
-    if (reused) {
-      sessionId = reused;
-      if (model) await oc.switchModel(sessionId, model).catch(() => {});
-      await oc.switchAgent(sessionId, AGENT_ID).catch(() => {});
-      return sessionId;
-    }
-    const payload = { title: 'Graph Engineering', agent: AGENT_ID, location: { directory } };
+  async function createFreshSession(title) {
+    const payload = {
+      title: title || 'Graph Engineering',
+      agent: AGENT_ID,
+      location: { directory },
+    };
     if (model) payload.model = model;
     const created = await oc.createSession(payload);
     sessionId = created.data.id;
     await oc.switchAgent(sessionId, AGENT_ID).catch(() => {});
     if (model) await oc.switchModel(sessionId, model).catch(() => {});
     return sessionId;
+  }
+
+  /** Reuse the newest session for this workspace, unless `force` starts a new one. */
+  async function ensureSession({ force = false } = {}) {
+    if (sessionId) return sessionId;
+    if (!force) {
+      const reused = await findReusableSession();
+      if (reused) {
+        sessionId = reused;
+        await oc.switchAgent(sessionId, AGENT_ID).catch(() => {});
+        if (model) await oc.switchModel(sessionId, model).catch(() => {});
+        return sessionId;
+      }
+    }
+    return createFreshSession();
+  }
+
+  /** Start a brand-new conversation, abandoning the current one. */
+  async function newSession(title) {
+    sessionId = null;
+    turn = null;
+    lastRequest = null;
+    setBusy(false);
+    notice(null);
+    if (logEl) logEl.innerHTML = '';
+    try {
+      await createFreshSession(title);
+      setStatus(readyLabel());
+      startStream();
+      return sessionId;
+    } catch (err) {
+      setStatus(`offline · ${err.message}`);
+      return null;
+    }
   }
 
   async function connect(config, workspace, selectedModel) {
@@ -79,7 +112,7 @@ export function createAgent({
     const available = (config?.oc?.agents || []).some((a) => a.id === AGENT_ID);
     try {
       await ensureSession();
-      setStatus(available ? `ready · ${modelLabel()}` : `${AGENT_ID} not installed`);
+      setStatus(available ? readyLabel() : `${AGENT_ID} not installed`);
       startStream();
     } catch (err) {
       setStatus(`offline · ${err.message}`);
@@ -91,7 +124,7 @@ export function createAgent({
     if (sessionId) {
       try { await oc.switchModel(sessionId, model); } catch (_) { /* surface via status */ }
     }
-    setStatus(`ready · ${modelLabel()}`);
+    setStatus(readyLabel());
   }
 
   function startStream() {
@@ -124,7 +157,12 @@ export function createAgent({
   // ── turn tracking ────────────────────────────────────────────────────────
   function beginTurn() {
     const now = Date.now();
-    turn = { startedAt: now, lastContentAt: now, lastKey: null, stalled: false, notifiedEmpty: false };
+    // turnAssistantCount lets us tell "our" reply apart from earlier messages,
+    // without comparing clocks across processes.
+    turn = {
+      startedAt: now, lastContentAt: now, lastKey: null, turnAssistantCount: assistantCount,
+      done: false, stalled: false, notifiedEmpty: false,
+    };
     notice(null);
   }
 
@@ -136,29 +174,35 @@ export function createAgent({
 
     const assistants = messages.filter((m) => m.type === 'assistant');
     const last = assistants[assistants.length - 1];
-    const busy = Boolean(last && !last.time?.completed);
     const key = contentKey(last);
+    const lastCompleted = Boolean(last && last.time?.completed);
+    const isNewAssistant = assistants.length > (turn ? turn.turnAssistantCount : 0);
+    assistantCount = assistants.length;
 
-    if (turn) {
+    let busy;
+    if (turn && !turn.done) {
       const decision = turnDecision({
-        busy, contentKey: key, lastKey: turn.lastKey,
-        lastContentAt: turn.lastContentAt, now: Date.now(),
-        stallMs, notifiedEmpty: turn.notifiedEmpty,
+        active: true, done: false, isNewAssistant, lastCompleted,
+        contentKey: key, lastKey: turn.lastKey, lastContentAt: turn.lastContentAt,
+        now: Date.now(), stallMs, notifiedEmpty: turn.notifiedEmpty,
       });
       turn.lastContentAt = decision.lastContentAt;
       turn.lastKey = key;
-      if (decision.progressed && key) turn.sawContent = true;
-
+      turn.done = decision.done;
+      busy = decision.busy;
       if (decision.stalled !== turn.stalled) {
         turn.stalled = decision.stalled;
         notice(decision.stalled
           ? { type: 'stalled', model: modelLabel(), elapsed: Math.round((Date.now() - turn.lastContentAt) / 1000) }
           : null);
       }
-      if (decision.empty) {
+      if (decision.empty && !turn.notifiedEmpty) {
         turn.notifiedEmpty = true;
         notice({ type: 'empty', model: modelLabel() });
       }
+    } else {
+      // No turn of ours: adopt the session's own notion of activity.
+      busy = turn ? false : Boolean(last && !lastCompleted);
     }
 
     if (busy !== running) setBusy(busy);
@@ -219,7 +263,7 @@ export function createAgent({
   }
 
   return {
-    connect, send, retry, stop, reset, disconnect, setModel, refresh,
+    connect, send, retry, stop, reset, newSession, disconnect, setModel, refresh,
     get sessionId() { return sessionId; },
     get busy() { return running; },
     get model() { return model; },
@@ -239,19 +283,32 @@ export function contentKey(message) {
 }
 
 /**
- * Decide how a turn is progressing.
- * @returns {{progressed:boolean,lastContentAt:number,stalled:boolean,empty:boolean}}
+ * Decide how an in-flight turn is progressing. A turn is only "empty" once it
+ * has actually produced a reply and that reply carried no content — never just
+ * because the assistant message has not appeared yet.
+ * @returns {{progressed:boolean,lastContentAt:number,done:boolean,busy:boolean,stalled:boolean,empty:boolean}}
  */
 export function turnDecision({
-  busy, contentKey: key, lastKey, lastContentAt, now, stallMs, notifiedEmpty,
+  active, done, isNewAssistant, lastCompleted,
+  contentKey: key, lastKey, lastContentAt, now, stallMs, notifiedEmpty,
 }) {
   const progressed = key !== lastKey;
   const at = progressed ? now : lastContentAt;
+
+  let finished = done;
+  let busy = false;
+  if (active && !done) {
+    if (isNewAssistant && lastCompleted) { finished = true; busy = false; }
+    else busy = true; // still waiting — no assistant message yet, or one in flight
+  }
+
   return {
     progressed,
     lastContentAt: at,
+    done: finished,
+    busy,
     stalled: Boolean(busy && now - at > stallMs),
-    empty: Boolean(!busy && !key && !notifiedEmpty),
+    empty: Boolean(finished && !key && !notifiedEmpty),
   };
 }
 

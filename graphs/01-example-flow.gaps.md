@@ -21,3 +21,4 @@ _Source of truth: prototype — not yet implemented._
 
 ## Changes
 - 2026-09-27 Initial diagram: happy path plus validation, renderer and queue failures.
+- 2026-09-28 Palette only: swapped to Okabe–Ito CVD-safe colours, added lightness separation and non-colour cues (dashed `async`, thick-stroked `error`). Nodes, edges and semantics unchanged.

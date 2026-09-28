@@ -898,10 +898,13 @@ function wireUI() {
     }
   });
   $('chat-stop').onclick = () => agent?.stop();
-  $('btn-agent-new').onclick = () => {
-    agent?.reset();
+  $('btn-agent-new').onclick = async () => {
+    if (agent?.busy && !window.confirm('A reply is still running. Start a new session anyway?')) return;
+    const tab = findTab(state.active);
+    const title = tab ? `Graph Engineering — ${tab.name}` : 'Graph Engineering';
     renderChatEmpty();
-    agent?.connect(state.config, state.workspace, parseModelValue($('agent-model').value));
+    const started = await agent?.newSession(title);
+    toast(started ? 'New session started' : 'Could not start a session', started ? 'ok' : 'err');
   };
   $('agent-model').onchange = async () => {
     const value = $('agent-model').value;
