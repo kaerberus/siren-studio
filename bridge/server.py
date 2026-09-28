@@ -113,6 +113,16 @@ DIAGRAM_KEYWORDS = {
 }
 RESERVED_IDS = {"end", "graph", "class", "classdef", "style", "click", "subgraph",
                 "linkstyle"}
+# A node *definition*: an identifier followed by a shape bracket. Definitions are
+# what actually take up room on the page, so they are what the size advisory
+# counts. Bare references in `A --> B` are not counted, which means the advisory
+# under-fires rather than nags - it is advice, not a rule.
+NODE_SHAPE_RE = re.compile(
+    r"(?:^|[\s>|])([A-Za-z_][\w-]*)\s*(?:\(\(|\[\[|\{\{|\[\(|\[\/|\[\\|\[|\(|\{|>)")
+SKIP_LINE_RE = re.compile(r"^(?:%%|classDef\b|class\s|style\s|click\s|linkStyle\b)",
+                          re.IGNORECASE)
+SIZE_WARN_NODES = 25
+SIZE_WARN_SUBGRAPHS = 5
 
 
 def lint_mermaid(source: str) -> dict:
@@ -209,6 +219,24 @@ def lint_mermaid(source: str) -> dict:
                     "label contains ; # or % without quotes")
                 break
 
+    # 5. size advisory. A diagram an agent writes should stay readable in the
+    #    editor, and the agent cannot see the rendered page - so measure the
+    #    source and hand it the number instead of a perceptual rule.
+    nodes = 0
+    subgraphs = 0
+    for raw in lines:
+        text = raw.strip()
+        if not text or SKIP_LINE_RE.match(text):
+            continue
+        if re.match(r"^subgraph\b", text):
+            subgraphs += 1
+            continue
+        nodes += len(NODE_SHAPE_RE.findall(raw))
+    if nodes > SIZE_WARN_NODES or subgraphs > SIZE_WARN_SUBGRAPHS:
+        add(warnings, 1,
+            f"{nodes} nodes and {subgraphs} subgraph(s) - consider splitting this "
+            f"into its own NN-topic.mmd file(s)")
+
     return {"errors": errors, "warnings": warnings}
 
 
@@ -252,7 +280,11 @@ def conventions_block() -> str:
         "",
         "- One flow per file, named `NN-topic.mmd` (`03-payment.mmd`).",
         "- The gap ledger for `NN-topic.mmd` is `NN-topic.gaps.md`.",
-        "- Keep a diagram under about 20 nodes; split rather than sprawl.",
+        "- One concern per graph. If you cannot state what it answers in one sentence,",
+        "  it is two diagrams: split it into its own `NN-topic.mmd` and reference it",
+        "  from the parent as `Sub[[see 03-payment.mmd]]`.",
+        "- Prefer splitting over growing. A diagram that has to be panned or zoomed to",
+        "  read has stopped being a review tool.",
     ] + [MARKER_END])
 
 

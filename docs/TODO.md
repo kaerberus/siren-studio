@@ -3,6 +3,8 @@
 Written 2026-09-28 to survive a context compaction. Read `README.md` and
 `docs/architecture.md` first; this file only holds what they don't.
 
+**Status: the whole list below is agreed.** Order is the intended sequence.
+
 ## Running it
 
 ```sh
@@ -18,29 +20,26 @@ python3 start.py --project ~/code/some-project
 - If the bridge was started from inside an agent's shell, restarting the OpenCode
   service kills it. Starting it from your own terminal survives that.
 
-## Dev test suites — currently in /tmp, which is volatile
-
-`/tmp/opencode/harness` (node 22 tarball + jsdom installed there):
-
-| suite | covers |
-| --- | --- |
-| `smoke.mjs` | editor boot, tabs, preview, outline, chat render, model palette, smart view, missing-agent handling (91 checks) |
-| `smart-view.mjs` | transposition decision across pane shapes |
-| `export-e2e.mjs` | rasterisable SVG against real Mermaid |
-| `chat-e2e.mjs` | live agent round-trip through the app module |
-| `project-setup.py` | project/diagrams detection guards, awareness wiring |
-| `plugin-bridge.py` | the plugin's bridge API + validation round-trip |
-| `permissions-e2e.py` | graph-only writes, no shell, tool scoping |
-
-They run against an isolated bridge on **port 8788** (`--project
-/tmp/opencode/smoke-workspace`), so they don't depend on which project the live
-editor is pointed at.
-
-**Item 6 below is to move these into the repo** before /tmp is cleared.
-
 ## The work
 
-### 1. Agent brevity — the biggest win
+### 1. Move the dev test suites into the repo
+
+`/tmp/opencode/harness` is volatile and holds ~180 checks of accumulated
+regression coverage. Move it to `tests/`.
+
+- Keep the suites, drop the one-off probe scripts.
+- De-hardcode the absolute paths (the suites currently import the app from
+  `/home/moon/Projects/opencode-mermaid/app` and read a specific example file).
+- Add a `tests/README.md` and a way to run everything in one go, including
+  starting the isolated test bridge on port 8788 (they must test against a
+  workspace the developer's live editor is not using).
+- Node 22 + jsdom are needed. Either vend a bootstrap script or document the fetch.
+
+Why this is first: these suites caught the stale agent list, the 45% oscillation
+trap, the `graphs/*` permission rule that never matched, and the PNG
+`foreignObject` bug. They are the only guard against re-breaking those.
+
+### 2. Agent brevity
 
 `agent/graph-engineer.md` → `# Output discipline` currently *mandates* long
 replies: every response must contain a full ```mermaid block, a "Modelling
@@ -57,7 +56,7 @@ for the gap loop — but stop it restating the ledger):
 - Modelling notes: at most 3 bullets, only if they carry a decision.
 - Open questions: only those gating the next step, one line each with a default.
 
-### 2. Collapse attachments in the chat transcript
+### 3. Collapse attachments in the chat transcript
 
 `buildPrompt` (`app/js/agent.js`) inlines the diagram and ledger as text, so the
 user's own message bubble contains two whole files, and the agent tends to quote
@@ -71,33 +70,59 @@ which is why we inline rather than use file attachments).
 
 Export the markers from one place so `buildPrompt` and the renderer can't drift.
 
-### 3. Resizeable agent panel
+### 4. Resizeable agent panel
 
 `--agent-w` is fixed at 370px and the only splitter is editor↔viewer. Add a
 second drag handle before the agent panel, adjust `--agent-w` with min/max
 clamps, hide it when the panel is collapsed.
 
-### 4. Conventions wording
+### 5. Conventions wording + a size advisory
 
-Two places say something ambiguous:
+Two audiences, deliberately separated.
 
-- generated `graphs/AGENTS.md` (`conventions_block` in `bridge/server.py`):
-  *"Keep a diagram under about 20 nodes; split rather than sprawl."*
-- `agent/skills/graph-engineering/references/diagram-selection.md` (which is
-  clearer — it says extract a subflow into its own `.mmd`).
+**Prose = the principle, checkable by reasoning.** The generated
+`graphs/AGENTS.md` (`conventions_block` in `bridge/server.py`) currently says
+*"Keep a diagram under about 20 nodes; split rather than sprawl."* — which is
+both ambiguous and **not actionable by an agent**, because an agent reads source,
+never rendered pixels. It cannot know whether a reader would have to pan.
 
-"Split" means **separate files**, not subgraphs. And 20 nodes is an arbitrary
-count standing in for a readability condition. Reword to something like: *if you
-can't read it without panning or zooming, split it into `NN-topic.mmd` files.*
-Note this changes the generated text, so re-running the wire-up is needed.
+Replace with the concern test, and keep the pan/zoom line only as *rationale*
+(agents follow a rule better with a stated reason):
 
-### 5. Clickable `.mmd` references + a child viewport
+```md
+- One concern per graph. If you cannot state what it answers in one sentence,
+  it is two diagrams: split it into its own `NN-topic.mmd` and reference it
+  from the parent as `Sub[[see 03-payment.mmd]]`.
+- Prefer splitting over growing. A diagram that has to be panned or zoomed to
+  read has stopped being a review tool.
+```
+
+No number in the prose — there is no principled one. Mirror the same change in
+`agent/skills/graph-engineering/references/diagram-selection.md`, which already
+says "extract a subflow into its own `NN-topic.mmd`" but triggers it on a count.
+
+**Tool output = the measurement.** The agent already calls `graph_validate` on
+every diagram it writes, so put the number where it can be *received* rather than
+imagined: `lint_mermaid` counts node definitions and subgraphs and emits a
+**warning** past **more than 25 nodes or more than 5 subgraphs**.
+
+- Warning, never an error: validation is about correctness, this is advice. A
+  big but valid diagram must not read as broken.
+- The threshold living in one tunable place is the point.
+- The editor can show the same advisory (it already counts nodes for the Outline
+  panel), so human and agent see the same signal.
+
+### 6. Clickable `.mmd` references + a child viewport
 
 **Goal.** Following a graph-of-graphs by hand is the missing navigation.
 `Sub[[see 03-payment.mmd]]` is currently decorative — Mermaid has no cross-file
 link, and clicking a node just jumps the editor to its source line.
 
-**Design decisions taken (after review):**
+**Agreed scope: do the clickable references alone first.** Click a reference and
+open that file in a tab. Small, delivers the navigation, and tells you whether
+the inset earns the viewer refactor. The child viewport is a follow-up.
+
+**Design decisions taken (after review), for the follow-up:**
 
 - **One inset pane, not many.** The viewer is a singleton (one `stage`, one
   `base`/`view`, module-level). One child pane with a breadcrumb and a back stack
@@ -119,16 +144,8 @@ link, and clicking a node just jumps the editor to its source line.
 
 **Sketch.** After render, scan `g.node` labels for a diagram filename, resolve
 it relative to the diagrams directory, and mark those nodes. Click opens the
-referenced file in the child pane (else falls back to today's jump-to-source).
-The child pane needs its own render target and its own `base`/`view`, so factor
-the viewer's per-viewport state rather than duplicating the module-level globals.
-
-### 6. Move the test suites into the repo
-
-`/tmp/opencode/harness` is volatile. Move to `tests/` with a short README, and
-add the vendored node/jsdom setup or document how to fetch it. These suites have
-caught real bugs (stale agent list, the 45% oscillation trap, the
-`graphs/*` permission rule never matching, PNG `foreignObject`).
+referenced file (tab first; later the child pane), else falls back to today's
+jump-to-source.
 
 ## Notes that are easy to forget
 
@@ -141,10 +158,12 @@ caught real bugs (stale agent list, the 45% oscillation trap, the
   `opencode -s <id>` to reach an old one.
 - A missing agent fails **closed**: `POST /api/session` accepts an unknown agent
   id, the turn then fails asynchronously as `Session.AgentNotFoundError`, and no
-  permissions are ever computed. The editor now checks the agent list first and
+  permissions are ever computed. The editor checks the agent list first and
   blocks with a clear message.
 - The bridge remembers each project's diagrams directory in
   `~/.local/state/opencode-mermaid/projects.json` (an empty directory can't be
   detected).
 - `AGENTS.md` in this repo was unwired and deleted on purpose: it was the
   dogfooding instance of the generator and carried no other content.
+- Re-running the awareness wire-up is needed after changing `conventions_block`,
+  since the generated text is written into projects.

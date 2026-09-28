@@ -27,8 +27,13 @@
 
 ## Decomposition
 
-When a graph exceeds roughly 20 nodes:
+Split when the graph answers more than one question — if you cannot state what it
+answers in one sentence, it is two diagrams. Size is the symptom, not the test: a
+diagram a reader has to pan or zoom to follow has stopped being a review tool.
 
 - Extract a subflow into its own `NN-topic.mmd` and reference it from the parent
   as `Sub[[see 03-payment.mmd]]`.
 - Or collapse a cluster into one node and offer the detail as a follow-up.
+
+`graph_validate` reports a size advisory past roughly 25 nodes or 5 subgraphs.
+Treat it as a prompt to consider splitting, not as an error, and not as a hard cap.
