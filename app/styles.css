@@ -440,6 +440,36 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .modal input:focus, .modal textarea:focus { outline: none; border-color: var(--accent); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .modal-actions button { padding: 7px 14px; border-radius: 7px; font-size: 12.5px; }
+
+/* workspace picker */
+.modal-lg { width: min(620px, 94vw); }
+.dir-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.dir-bar .mini-btn:disabled { opacity: 0.4; cursor: default; }
+.dir-path {
+  flex: 1; min-width: 0; padding: 7px 9px; border-radius: var(--radius-sm);
+  background: var(--bg-inset); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--font-mono); font-size: 12px;
+}
+.dir-path:focus { outline: none; border-color: var(--accent); }
+.dir-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.dir-shortcuts:empty { display: none; }
+.dir-list {
+  height: 260px; overflow: auto; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-inset); padding: 4px;
+}
+.dir-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+  border-radius: 6px; cursor: pointer; font-size: 12.5px; color: var(--text-dim);
+}
+.dir-item:hover { background: var(--bg-hover); color: var(--text); }
+.dir-item .ti-icon { color: var(--accent); flex: none; }
+.dir-item.hidden-dir { opacity: 0.6; }
+.dir-empty { padding: 16px 12px; color: var(--text-faint); font-size: 12.5px; line-height: 1.5; }
+.dir-empty.err { color: var(--err); }
+.dir-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.dir-foot .cancel { padding: 7px 14px; border-radius: 7px; font-size: 12.5px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
+.dir-foot .confirm { padding: 7px 14px; border-radius: 7px; font-size: 12.5px; background: var(--accent-strong); border: 1px solid var(--accent-strong); color: #fff; }
+.dir-foot .confirm:hover { background: var(--accent); }
 .modal-actions .cancel { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
 .modal-actions .confirm { background: var(--accent-strong); border: 1px solid var(--accent-strong); color: #fff; }
 

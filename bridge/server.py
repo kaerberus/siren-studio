@@ -19,7 +19,9 @@ import mimetypes
 import os
 import queue
 import re
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -96,6 +98,15 @@ def discover_service() -> dict | None:
             "pid": data.get("pid"),
             "source": str(path),
         }
+    return None
+
+
+def detect_native_picker() -> str | None:
+    """Prefer the desktop's own folder chooser when one is available."""
+    if shutil.which("kdialog"):
+        return "kdialog"
+    if shutil.which("zenity"):
+        return "zenity"
     return None
 
 
@@ -423,6 +434,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._handle_delete(query)
             if path == "/api/fs/move" and method == "POST":
                 return self._handle_move()
+            if path == "/api/fs/dirs" and method == "GET":
+                return self._handle_dirs(query)
+            if path == "/api/fs/mkdir" and method == "POST":
+                return self._handle_mkdir()
+            if path == "/api/pick-directory" and method == "POST":
+                return self._handle_pick_directory()
             if path == "/api/workspace" and method == "POST":
                 return self._handle_set_workspace()
             if path == "/api/events" and method == "GET":
@@ -472,6 +489,8 @@ class Handler(BaseHTTPRequestHandler):
             },
             "defaultAgent": DEFAULT_AGENT,
             "defaultModel": getattr(self.server, "default_model", None),
+            "nativePicker": getattr(self.server, "native_picker", None),
+            "home": str(Path.home()),
         })
 
     # ------------------------------------------------------------------ fs api
@@ -536,6 +555,84 @@ class Handler(BaseHTTPRequestHandler):
         self.server.watcher._rebaseline()  # type: ignore[attr-defined]
         self.hub.publish("workspace-changed", {"root": str(target)})
         self._json({"workspace": str(target)})
+
+    def _handle_dirs(self, query: dict) -> None:
+        """Browse directories anywhere on the machine (loopback, single user).
+
+        Used by the workspace picker; unlike the workspace API this is not
+        confined to the workspace root, so the user can pick a new one.
+        """
+        raw = (query.get("path") or [""])[0]
+        target = Path(os.path.expanduser(unquote(raw))).resolve() if raw else Path.home()
+        if not target.is_dir():
+            return self._error(400, f"not a directory: {target}")
+        home = Path.home()
+        entries = []
+        try:
+            for child in target.iterdir():
+                try:
+                    if child.is_dir():
+                        entries.append({"name": child.name, "path": str(child),
+                                        "hidden": child.name.startswith(".")})
+                except OSError:
+                    continue
+        except PermissionError:
+            return self._error(403, f"permission denied: {target}")
+        entries.sort(key=lambda e: (e["hidden"], e["name"].lower()))
+        shortcuts = [{"name": s, "path": str(home / s)}
+                     for s in ("Projects", "Documents", "Downloads", "Desktop")
+                     if (home / s).is_dir()]
+        self._json({
+            "path": str(target),
+            "parent": str(target.parent) if target.parent != target else None,
+            "home": str(home),
+            "dirs": entries[:2000],
+            "shortcuts": shortcuts,
+        })
+
+    def _handle_mkdir(self) -> None:
+        payload = self._read_json()
+        base = Path(os.path.expanduser(payload.get("path") or "")).resolve()
+        name = (payload.get("name") or "").strip()
+        if not base.is_dir():
+            return self._error(400, f"not a directory: {base}")
+        if not name or name in (".", "..") or os.sep in name or name.startswith("~"):
+            return self._error(400, "invalid folder name")
+        target = base / name
+        if target.exists():
+            return self._error(409, f"already exists: {target.name}")
+        try:
+            target.mkdir()
+        except OSError as exc:
+            return self._error(500, str(exc))
+        self._json({"path": str(target)})
+
+    def _handle_pick_directory(self) -> None:
+        """Ask the desktop's own folder chooser (kdialog/zenity)."""
+        picker = getattr(self.server, "native_picker", None)
+        if not picker:
+            return self._error(501, "no system folder chooser available")
+        payload = self._read_json()
+        start = os.path.expanduser(payload.get("start") or str(self.workspace.root))
+        if not os.path.isdir(start):
+            start = str(Path.home())
+        cmd = (["kdialog", "--getexistingdirectory", start] if picker == "kdialog"
+               else ["zenity", "--file-selection", "--directory", f"--filename={start}/"])
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except FileNotFoundError:
+            return self._error(501, f"{picker} is not available")
+        except subprocess.TimeoutExpired:
+            return self._json({"cancelled": True, "reason": "timeout"})
+        if proc.returncode != 0:
+            return self._json({"cancelled": True})
+        chosen = (proc.stdout or "").strip()
+        if not chosen:
+            return self._json({"cancelled": True})
+        target = Path(chosen).resolve()
+        if not target.is_dir():
+            return self._error(400, f"not a directory: {target}")
+        self._json({"path": str(target)})
 
     def _handle_focus(self) -> None:
         payload = self._read_json()
@@ -679,6 +776,7 @@ class BridgeServer(ThreadingHTTPServer):
         self.oc = oc
         self.default_workspace = default_workspace
         self.default_model = default_model
+        self.native_picker = detect_native_picker()
         self.watcher = Watcher(workspace, hub)
 
 

@@ -1026,13 +1026,8 @@ async function newFileModal() {
   }
 }
 
-async function openWorkspaceModal() {
-  const dir = await promptModal({
-    title: 'Open workspace',
-    label: 'Absolute path to a project or diagrams directory',
-    value: state.workspace,
-  });
-  if (!dir) return;
+/** Apply a chosen workspace directory. */
+async function useWorkspace(dir) {
   try {
     const result = await bridge.setWorkspace(dir);
     state.workspace = result.workspace;
@@ -1051,7 +1046,136 @@ async function openWorkspaceModal() {
     toast(`Workspace: ${result.workspace}`, 'ok');
   } catch (err) {
     toast(`Cannot open: ${err.message}`, 'err');
+    throw err;
   }
+}
+
+/**
+ * Workspace picker: browse folders, create one, or hand off to the desktop's
+ * own chooser. Browsing is rooted anywhere so a brand-new project folder can be
+ * made without leaving the editor.
+ */
+async function openWorkspaceModal() {
+  let current = state.workspace;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal modal-lg">
+      <h3>Open workspace</h3>
+      <p>The editor and the Graph Engineer read and write in this folder.</p>
+      <div class="dir-bar">
+        <button class="mini-btn" id="dir-up" type="button" title="Parent folder">↑</button>
+        <button class="mini-btn" id="dir-home" type="button" title="Home folder">~</button>
+        <input id="dir-path" class="dir-path" spellcheck="false" aria-label="Folder path" />
+        <button class="mini-btn labeled" id="dir-go" type="button">Go</button>
+        <button class="mini-btn" id="dir-refresh" type="button" title="Refresh">⟳</button>
+      </div>
+      <div class="dir-shortcuts" id="dir-shortcuts"></div>
+      <div class="dir-list" id="dir-list"></div>
+      <div class="dir-foot">
+        <button class="mini-btn labeled" id="dir-new" type="button">New folder…</button>
+        <button class="mini-btn labeled" id="dir-native" type="button" hidden>System dialog…</button>
+        <span class="spacer"></span>
+        <button class="cancel" id="dir-cancel" type="button">Cancel</button>
+        <button class="confirm" id="dir-use" type="button">Use this folder</button>
+      </div>
+    </div>`;
+
+  const close = () => backdrop.remove();
+  const listEl = backdrop.querySelector('#dir-list');
+  const pathEl = backdrop.querySelector('#dir-path');
+  const upBtn = backdrop.querySelector('#dir-up');
+  const shortcutsEl = backdrop.querySelector('#dir-shortcuts');
+  let parent = null;
+
+  async function load(path) {
+    listEl.innerHTML = '<div class="dir-empty">Loading…</div>';
+    let data;
+    try {
+      data = await bridge.dirs(path);
+    } catch (err) {
+      listEl.innerHTML = `<div class="dir-empty err">${escapeHtml(err.message)}</div>`;
+      return;
+    }
+    current = data.path;
+    parent = data.parent;
+    pathEl.value = data.path;
+    upBtn.disabled = !parent;
+    listEl.innerHTML = '';
+    shortcutsEl.innerHTML = '';
+    for (const item of data.shortcuts || []) {
+      const button = document.createElement('button');
+      button.className = 'mini-btn labeled';
+      button.type = 'button';
+      button.textContent = item.name;
+      button.onclick = () => load(item.path);
+      shortcutsEl.appendChild(button);
+    }
+    if (!data.dirs.length) {
+      listEl.innerHTML = '<div class="dir-empty">No sub-folders here. Name one below, or use this folder.</div>';
+    }
+    for (const entry of data.dirs) {
+      const row = document.createElement('div');
+      row.className = `dir-item${entry.hidden ? ' hidden-dir' : ''}`;
+      row.innerHTML = '<svg viewBox="0 0 24 24" class="ti-icon"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
+        + `<span>${escapeHtml(entry.name)}</span>`;
+      row.onclick = () => load(entry.path);
+      listEl.appendChild(row);
+    }
+  }
+
+  upBtn.onclick = () => parent && load(parent);
+  backdrop.querySelector('#dir-home').onclick = () => load('');
+  backdrop.querySelector('#dir-refresh').onclick = () => load(current);
+  backdrop.querySelector('#dir-go').onclick = () => load(pathEl.value.trim());
+  pathEl.onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); load(pathEl.value.trim()); } };
+
+  backdrop.querySelector('#dir-new').onclick = async () => {
+    const name = await promptModal({
+      title: 'New folder',
+      label: `Create a folder inside ${current}`,
+      value: 'new-project',
+    });
+    if (!name) return;
+    try {
+      const created = await bridge.mkdir(current, name);
+      await refreshTree();
+      await load(created.path);
+      setStatusMsg(`created ${created.path}`);
+    } catch (err) {
+      toast(`Could not create folder: ${err.message}`, 'err');
+    }
+  };
+
+  const nativeBtn = backdrop.querySelector('#dir-native');
+  if (state.config?.nativePicker) {
+    nativeBtn.hidden = false;
+    nativeBtn.onclick = async () => {
+      nativeBtn.disabled = true;
+      nativeBtn.textContent = 'Waiting…';
+      try {
+        const picked = await bridge.pickDirectory(current);
+        if (picked?.path) { close(); await useWorkspace(picked.path); }
+      } catch (err) {
+        toast(`System dialog failed: ${err.message}`, 'err');
+      } finally {
+        nativeBtn.disabled = false;
+        nativeBtn.textContent = 'System dialog…';
+      }
+    };
+  }
+
+  backdrop.querySelector('#dir-cancel').onclick = close;
+  backdrop.querySelector('#dir-use').onclick = async () => {
+    close();
+    await useWorkspace(current).catch(() => {});
+  };
+  backdrop.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+  backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close(); });
+
+  document.body.appendChild(backdrop);
+  await load(current);
 }
 
 async function editLedger() {
@@ -1169,5 +1293,6 @@ window.__mermaidStudio = {
   markdownToHtml,
   handleNotice,
   loadModels,
+  openWorkspaceModal,
   get blocks() { return state.pendingBlocks; },
 };
