@@ -22,22 +22,21 @@ python3 start.py --project ~/code/some-project
 
 ## The work
 
-### 1. Move the dev test suites into the repo
+### 1. ~~Move the dev test suites into the repo~~ — DONE
 
-`/tmp/opencode/harness` is volatile and holds ~180 checks of accumulated
-regression coverage. Move it to `tests/`.
+Now in `tests/`. `tests/bootstrap.sh` fetches Node + jsdom into `tests/.node`
+and `tests/node_modules` (both gitignored); `tests/run.sh` starts an isolated
+bridge on port 8788 against `/tmp/opencode/mermaid-tests/workspace`, runs all
+seven suites (175 checks), and tears the bridge down.
 
-- Keep the suites, drop the one-off probe scripts.
-- De-hardcode the absolute paths (the suites currently import the app from
-  `/home/moon/Projects/opencode-mermaid/app` and read a specific example file).
-- Add a `tests/README.md` and a way to run everything in one go, including
-  starting the isolated test bridge on port 8788 (they must test against a
-  workspace the developer's live editor is not using).
-- Node 22 + jsdom are needed. Either vend a bootstrap script or document the fetch.
+Paths are derived from `import.meta.url` / `__file__`, and the bridge URL,
+workspace and ports come from `TEST_PORT`, `TEST_WORKSPACE`, `TEST_BASE`,
+`TEST_ROOT`. The old copy in `/tmp/opencode/harness` was deleted so there is
+only one source of truth.
 
-Why this is first: these suites caught the stale agent list, the 45% oscillation
-trap, the `graphs/*` permission rule that never matched, and the PNG
-`foreignObject` bug. They are the only guard against re-breaking those.
+These suites caught the stale agent list, the 45% oscillation trap, the
+`graphs/*` permission rule that never matched, and the PNG `foreignObject` bug.
+They are the only guard against re-breaking those.
 
 ### 2. Agent brevity
 

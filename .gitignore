@@ -14,3 +14,8 @@ Thumbs.db
 # Local scratch
 .history/
 *.log
+
+# tests (dev only)
+tests/node_modules/
+tests/.node/
+tests/package-lock.json
