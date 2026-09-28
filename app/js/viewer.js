@@ -11,11 +11,24 @@ const mermaid = window.mermaid;
 const MIN_SCALE = 0.25; // zoomed out to a quarter of "fit"
 const MAX_SCALE = 24;   // zoomed in 24x
 const FIT_PAD = 0.05;   // 5% breathing room around the content
+// Smart view transposes a flowchart when it would otherwise use less than this
+// fraction of the pane on its non-binding axis.
+const SMART_THRESHOLD = 0.45;
+const VERTICAL_DIRECTIONS = new Set(['TD', 'TB', 'BT']);
+const HORIZONTAL_DIRECTIONS = new Set(['LR', 'RL']);
 
 let stage = null;
 let target = null;
 let emptyState = null;
 let themeMode = 'dark';
+let smartView = false;
+// What we actually rendered (may be transposed) and whether we flipped it.
+let renderedSource = '';
+let transposed = false;
+// Decision memo: transposition depends on the authored direction and the pane
+// shape, neither of which changes as you type, so avoid the trial render.
+let decisionKey = '';
+let decisionValue = false;
 
 // base: the content's own viewBox. view: what we currently show.
 let base = { x: 0, y: 0, w: 1, h: 1 };
@@ -108,42 +121,151 @@ function screenToUser(el, clientX, clientY) {
   return { x: view.x + view.w / 2, y: view.y + view.h / 2 };
 }
 
+// ── smart view: transpose a flowchart to use the pane better ────────────────
+
+/** The diagram keyword and direction of a flowchart, or null for anything else. */
+export function diagramDirection(source) {
+  const lines = (source || '').split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index].trim();
+    if (!text || text.startsWith('%%')) continue;
+    const match = text.match(/^(flowchart|graph)\s+(TD|TB|BT|RL|LR)\b/i);
+    if (!match) return null;
+    return {
+      keyword: match[1],
+      direction: match[2].toUpperCase(),
+      index,
+      line: lines[index],
+    };
+  }
+  return null;
+}
+
+/** The same flowchart with its axis flipped, or null if it is not a flowchart. */
+export function transposeSource(source) {
+  const info = diagramDirection(source);
+  if (!info) return null;
+  const target_ = VERTICAL_DIRECTIONS.has(info.direction) ? 'LR' : 'TD';
+  const lines = (source || '').split('\n');
+  lines[info.index] = info.line.replace(
+    new RegExp(`(\\b${info.keyword}\\s+)${info.direction}\\b`, 'i'),
+    `$1${target_}`,
+  );
+  return lines.join('\n');
+}
+
+/** How much of the pane the fitted graph would use on each axis (0..1). */
+function paneUsage(rect) {
+  if (!stage) return null;
+  const sw = stage.clientWidth;
+  const sh = stage.clientHeight;
+  if (!sw || !sh) return null;
+  const scale = Math.min(sw / rect.w, sh / rect.h);
+  return { x: (rect.w * scale) / sw, y: (rect.h * scale) / sh, sw, sh };
+}
+
+/**
+ * Should this source be transposed to fit the pane? Always judged from the
+ * AUTHORED geometry, so the answer cannot oscillate.
+ */
+function shouldTranspose(source, authoredRect) {
+  if (!smartView) return false;
+  const info = diagramDirection(source);
+  if (!info) return false; // flowcharts only
+  const usage = paneUsage(expand(authoredRect, FIT_PAD));
+  if (!usage) return false;
+  const key = `${info.direction}|${usage.sw}x${usage.sh}|${Math.round(authoredRect.w)}x${Math.round(authoredRect.h)}`;
+  if (key === decisionKey) return decisionValue;
+  const wastes = Math.min(usage.x, usage.y) < SMART_THRESHOLD;
+  const portraitPane = usage.sh > usage.sw;
+  // Only flip when the graph's axis disagrees with the pane's shape.
+  const disagrees = HORIZONTAL_DIRECTIONS.has(info.direction) ? portraitPane
+    : VERTICAL_DIRECTIONS.has(info.direction) ? !portraitPane : false;
+  decisionKey = key;
+  decisionValue = wastes && disagrees;
+  return decisionValue;
+}
+
+export function setSmartView(on) {
+  const next = Boolean(on);
+  if (next === smartView) return;
+  smartView = next;
+  decisionKey = ''; // force a fresh measurement
+}
+
+export function isTransposed() {
+  return transposed;
+}
+
+/** The source as currently rendered — transposed if smart view flipped it. */
+export function getRenderedSource() {
+  return renderedSource;
+}
+
 // ── render ─────────────────────────────────────────────────────────────────
 let renderSeq = 0;
 
-/** Render mermaid source. Returns {ok, error?, empty?}. */
+function prepareSvg(el) {
+  // Let the SVG fill the stage; viewBox does the fitting.
+  el.removeAttribute('width');
+  el.removeAttribute('height');
+  el.style.maxWidth = 'none';
+  el.style.width = '100%';
+  el.style.height = '100%';
+  el.style.background = 'transparent';
+  el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+}
+
+/** Render mermaid source. Returns {ok, error?, empty?, transposed?}. */
 export async function render(text) {
   const seq = ++renderSeq;
   const source = (text || '').trim();
   if (!source) {
     setEmptyVisible(true);
     target.innerHTML = '';
+    renderedSource = '';
+    transposed = false;
     return { ok: true, empty: true };
   }
-  const id = `mmd-${seq}-${Date.now()}`;
+  const stamp = Date.now();
+  const ids = [`mmd-${seq}-${stamp}`, `mmd-${seq}-${stamp}x`];
   try {
-    const { svg } = await mermaid.render(id, source);
+    // Always draw the authored diagram first: the transposition decision is made
+    // from its geometry, which keeps the result stable.
+    const first = await mermaid.render(ids[0], source);
     if (seq !== renderSeq) return { ok: true, stale: true };
-    target.innerHTML = svg;
-    setEmptyVisible(false);
+    target.innerHTML = first.svg;
     const el = svgEl();
-    if (el) {
-      // Let the SVG fill the stage; viewBox does the fitting.
-      el.removeAttribute('width');
-      el.removeAttribute('height');
-      el.style.maxWidth = 'none';
-      el.style.width = '100%';
-      el.style.height = '100%';
-      el.style.background = 'transparent';
-      el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-      const previous = base;
-      base = readBaseViewBox(el);
-      if (userAdjusted && previous.w > 0) preserveView(previous);
-      else fit();
+    if (!el) return { ok: true };
+    prepareSvg(el);
+    let authored = readBaseViewBox(el);
+    let shown = source;
+
+    if (shouldTranspose(source, authored)) {
+      const flipped = transposeSource(source);
+      if (flipped) {
+        const second = await mermaid.render(ids[1], flipped);
+        if (seq !== renderSeq) return { ok: true, stale: true };
+        target.innerHTML = second.svg;
+        const el2 = svgEl();
+        if (el2) {
+          prepareSvg(el2);
+          authored = readBaseViewBox(el2);
+          shown = flipped;
+        }
+      }
     }
-    return { ok: true };
+
+    setEmptyVisible(false);
+    renderedSource = shown;
+    transposed = shown !== source;
+    const previous = base;
+    base = authored;
+    if (userAdjusted && previous.w > 0) preserveView(previous);
+    else fit();
+    return { ok: true, transposed };
   } catch (err) {
-    cleanupStray(id);
+    for (const id of ids) cleanupStray(id);
     if (seq !== renderSeq) return { ok: true, stale: true };
     return { ok: false, error: err };
   }

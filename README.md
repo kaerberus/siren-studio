@@ -63,6 +63,17 @@ open: `opencode service status`).
   PNG export re-renders the diagram with text labels and no `<foreignObject>`
   (browsers refuse to rasterise those inside an `<img>`), and reports a clear
   error if the browser can't produce the image.
+- **Smart view** (the checkbox next to the zoom controls, on by default) lays a
+  flowchart out on the other axis when that uses the pane better. A wide `LR`
+  graph in a tall preview pane otherwise fits by width and leaves most of the
+  height empty; smart view draws it as `TD` instead. It only kicks in when the
+  fitted graph would use **less than 45%** of the pane on its non-binding axis
+  *and* the graph's direction disagrees with the pane's shape, so it can't
+  oscillate. **Flowcharts only** — sequence, state, pie and ER diagrams have no
+  direction to flip.
+  It is a *view*: the file is untouched, the header shows *transposed to fit*,
+  and you can uncheck it to see the graph as authored. Exports follow what is on
+  screen. It re-decides when the pane is resized or the splitter is dragged.
 - **Selection sync** — hover a node in the preview and its source lines light up;
   click an outline entry to jump to its definition; click a node to jump to it.
 - **Panels** — Files, Outline (nodes + subgraphs), and **Gaps**, which renders
@@ -237,14 +248,12 @@ opencode-mermaid/
 │  ├─ index.html styles.css
 │  ├─ js/  app.js editor.js viewer.js agent.js bridge.js
 │  └─ vendor/               mermaid 11 + CodeMirror 5 (offline)
-├─ graphs/                  default workspace (examples)
+├─ graphs/                  example diagrams (this project's diagrams directory)
 ├─ agent/                   agent, skill and plugin sources
 │  ├─ graph-engineer.md
 │  ├─ global-permissions.json   graph_* denied to every agent by default
 │  ├─ skills/graph-engineering/
 │  └─ plugins/graph-tools.js
-├─ AGENTS.md                generator-managed graph awareness (this repo)
-├─ graphs/AGENTS.md         generator-managed diagram conventions
 └─ docs/architecture.md
 ```
 

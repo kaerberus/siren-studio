@@ -5,7 +5,8 @@ import { createEditor } from './editor.js';
 import {
   initViewer, render as renderGraph, setTheme as setMermaidTheme, fit, zoom,
   exportSvg, exportPng, lintMermaid, highlightNode, clearHighlight,
-  setEmptyVisible, focusNode, resetView, parseSource,
+  setEmptyVisible, focusNode, resetView, parseSource, setSmartView, isTransposed,
+  getRenderedSource,
 } from './viewer.js';
 import { createAgent, extractAssistant, toolLabel } from './agent.js';
 
@@ -468,12 +469,25 @@ async function saveAs(tab) {
   }
 }
 
+function applySmartView(on) {
+  setSmartView(on);
+  $('smart-view').checked = on;
+  localStorage.setItem('ms-smart-view', on ? '1' : '0');
+  updateViewerNote();
+}
+
+function updateViewerNote() {
+  const note = $('viewer-note');
+  if (note) note.hidden = !isTransposed();
+}
+
 function scheduleRender(delay = 260) {
   clearTimeout(renderTimer);
   renderTimer = setTimeout(async () => {
     const tab = findTab(state.active);
     if (!tab) return;
     const result = await renderGraph(tab.content);
+    updateViewerNote();
     const badge = $('lint-badge');
     if (result.ok) {
       badge.textContent = 'ok';
@@ -851,6 +865,12 @@ function wireUI() {
     };
   });
 
+  applySmartView(localStorage.getItem('ms-smart-view') !== '0');
+  $('smart-view').onchange = () => {
+    applySmartView($('smart-view').checked);
+    scheduleRender(0);
+  };
+
   $('btn-refresh').onclick = refreshTree;
   $('btn-new-file').onclick = newFileModal;
   $('btn-new').onclick = () => openUntitled('flowchart TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[Do the thing]\n    B -->|no| D[Stop]\n');
@@ -877,7 +897,9 @@ function wireUI() {
         else toast('Saved SVG', 'ok');
       }
       if (kind === 'png') {
-        if (!(await exportPng(`${base}.png`, tab?.content || ''))) toast('Nothing to export', 'warn');
+        // export what is on screen, so smart view transposition is included
+        const shown = getRenderedSource() || tab?.content || '';
+        if (!(await exportPng(`${base}.png`, shown))) toast('Nothing to export', 'warn');
         else toast('Saved PNG', 'ok');
       }
       if (kind === 'mmd') downloadText(tab?.content || '', `${base}.mmd`);
@@ -911,7 +933,7 @@ function wireUI() {
       splitter.classList.remove('dragging');
       splitter.removeEventListener('pointermove', move);
       splitter.removeEventListener('pointerup', up);
-      fit();
+      scheduleRender(0); // the pane changed shape: re-evaluate smart view
     };
     splitter.addEventListener('pointermove', move);
     splitter.addEventListener('pointerup', up);
@@ -984,6 +1006,13 @@ function wireUI() {
     const node = analysis.nodes.find((n) => n.id === id);
     if (node) editor.gotoLine(node.line);
     focusNode(id);
+  });
+
+  // the pane shape feeds the smart-view decision
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => scheduleRender(0), 220);
   });
 
   // shortcuts
