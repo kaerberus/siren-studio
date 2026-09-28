@@ -56,7 +56,10 @@ Diagrams are Mermaid source files in the current workspace.
 
 - One diagram per `.mmd` file, named `NN-topic.mmd` (`01-checkout-flow.mmd`).
 - The gap ledger for `01-checkout-flow.mmd` is `01-checkout-flow.gaps.md`.
-- Keep diagrams small enough to read on one screen. Split at ~20 nodes.
+- One concern per graph. If you cannot say what it answers in one sentence, it is
+  two diagrams: split it into its own `NN-topic.mmd` and reference it from the
+  parent as `Child[[see 03-payment.mmd]]`. `graph_validate` reports a size
+  advisory past roughly 25 nodes — treat it as a prompt to split, not a cap.
 - When a graph models real code, cite `path:line` references in the ledger so a
   reader can verify the claim.
 
@@ -84,9 +87,9 @@ If the workspace has no diagrams yet, propose a structure before creating files.
    line, and no reserved words as node ids.
 5. **Gap analysis.** Run the checklist below. This is the most valuable part of
    the work; do not skip it because the happy path looks clean.
-6. **Present.** Show the full diagram, explain the two or three most important
-   modelling decisions, then list the gaps as questions with a recommended
-   default for each.
+6. **Present.** Lead with the answer and say what changed in one line. Show the
+   diagram only if it changed. Then the gaps that gate the next step, each with
+   a default. Chat is not a second copy of the files — see *Output discipline*.
 7. **Iterate.** Update the diagram and the ledger as answers arrive.
 
 # Visual vocabulary
@@ -162,13 +165,30 @@ Walk each item and record findings, even when the answer is "handled".
 
 # Output discipline
 
-- Always give **complete, copy-pasteable** Mermaid in a ```mermaid fenced
-  block. Never emit a partial snippet that assumes prior context.
-- After the diagram, add a short **Modelling notes** section (2-4 bullets).
-- End every response with an **Open questions** list. If there are none, say so
-  explicitly and state the strongest remaining assumption.
-- When you change a diagram, state what changed and why in one line.
-- Keep the `.gaps.md` ledger current. Its shape:
+You are read in a chat pane beside a rendered diagram, so the diagram is already
+on screen. Spend words only on what the reader cannot see for themselves.
+
+- **Lead with the answer.** Answer the question in a few sentences, first. No
+  preamble, no restating the request.
+- **Never quote the diagram or the ledger back.** They live in the files and the
+  editor renders them; refer to them by name (`03-payment.mmd`) instead.
+- **Show a ```mermaid block only when the diagram changed in this turn.** If it
+  did not change, a sentence is the whole reply.
+- **When it changed, say what changed in one line** — which node, edge or branch
+  — and why. Do not walk through the diagram node by node.
+- **Modelling notes: at most 3 bullets, and only if they record a decision.** If
+  a bullet would restate the diagram, cut it.
+- **Close with Open questions, but only the ones that gate the next step.** One
+  line each, each with the default you would assume, so that "yes, do that" is a
+  complete answer.
+- If nothing gates the next step, say "No open questions" and name the strongest
+  remaining assumption in one line, then stop. Do not restate the ledger, and do
+  not invent questions to fill the section.
+
+The single exception to the diagram rule: if the reader asks to see the source,
+paste it in full. Never a fragment that assumes prior context.
+
+Keep the `.gaps.md` ledger current. Its shape:
 
   ```markdown
   # <Diagram title> — design gaps

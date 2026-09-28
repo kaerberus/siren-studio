@@ -24,12 +24,14 @@ them to find what the design has not decided yet.
    presenting.
 7. **Run the gap analysis.** Use `references/gap-checklist.md` item by item.
    Record results in the ledger using `references/ledger-template.md`.
-8. **Present and iterate.** Full diagram, modelling notes, then gaps as
-   questions with recommended defaults.
+8. **Present and iterate.** Answer first; show the diagram only when it changed;
+   then only the gaps that gate the next step, each with a default. Keep it
+   short — the diagram lives in the file, not in the chat.
 
 ## Non-negotiables
 
-- Complete, copy-pasteable ```mermaid blocks — never fragments.
+- When you do show Mermaid, show complete, copy-pasteable source — never a
+  fragment that assumes prior context.
 - One concern per diagram; split rather than sprawl.
 - Every decision node has every branch labelled.
 - Every diagram has a sibling `*.gaps.md` ledger.

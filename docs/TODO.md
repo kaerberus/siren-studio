@@ -38,22 +38,43 @@ These suites caught the stale agent list, the 45% oscillation trap, the
 `graphs/*` permission rule that never matched, and the PNG `foreignObject` bug.
 They are the only guard against re-breaking those.
 
-### 2. Agent brevity
+### 2. ~~Agent brevity~~ — DONE
 
-`agent/graph-engineer.md` → `# Output discipline` currently *mandates* long
-replies: every response must contain a full ```mermaid block, a "Modelling
-notes" section, and an "Open questions" list. That is why a one-line question
-gets a wall of text.
+`# Output discipline` no longer mandates a full ```mermaid block, a "Modelling
+notes" section and an "Open questions" list on **every** reply. It now says:
 
-Replace with rules along these lines (keep "Open questions" — it is load-bearing
-for the gap loop — but stop it restating the ledger):
-
-- Answer the question first, in a few sentences.
-- Include a ```mermaid block **only when the diagram changed**.
-- If it changed, say what changed in one line; don't restate the whole diagram.
-- Never quote the diagram or ledger back — reference them by file.
-- Modelling notes: at most 3 bullets, only if they carry a decision.
+- Lead with the answer; no preamble, no restating the request.
+- Never quote the diagram or the ledger back — the editor renders them, so the
+  chat is not a second copy. Reference them by file name.
+- Show a ```mermaid block only when the diagram changed in this turn. If it did
+  not change, a sentence is the whole reply.
+- When it changed, say what changed in one line, and why.
+- Modelling notes: at most 3 bullets, and only if they record a decision.
 - Open questions: only those gating the next step, one line each with a default.
+  If there are none, say so and name the strongest remaining assumption — do not
+  restate the ledger and do not invent questions to fill the section.
+
+The same mandate was **duplicated in two places the item did not mention**:
+`# Workflow` step 6 ("Show the full diagram…"), and the skill — `SKILL.md` step 8
+("Full diagram, modelling notes…") and its non-negotiable "Complete,
+copy-pasteable ```mermaid blocks". Both rewritten; the skill's line is now a
+*syntax* rule (when you do show source, never a fragment) rather than a
+paste-every-turn rule.
+
+Also fixed two `~20 nodes` copies that item 5 missed: `graph-engineer.md` →
+Workspace conventions, and `codebase-to-flow.md` → "Calibrate altitude". Both
+now state the concern test and mention the `graph_validate` advisory instead of
+a hard node count.
+
+Verified against the live model (`deepseek-flash`), fresh session:
+
+| turn | reply |
+| --- | --- |
+| no diagram change ("what is a design gap?") | 246 chars, 1 line, no block, no sections |
+| diagram changed (rename a decision label) | 766 chars: one-line summary, the block, 2 notes, 1 gated question with a default |
+
+The agent is installed by symlink, so this is live without re-running
+`install-agent.py`.
 
 ### 3. Collapse attachments in the chat transcript
 
@@ -166,3 +187,8 @@ jump-to-source.
   dogfooding instance of the generator and carried no other content.
 - Re-running the awareness wire-up is needed after changing `conventions_block`,
   since the generated text is written into projects.
+- The editor's stall notice fires after 45s with no new content. `contentKey`
+  counts text length and tool *names*, so a long silent read/think inside a turn
+  can trip it while the agent is working normally — seen once while probing item
+  2. If it becomes annoying, the fix is a longer `stallMs` or treating an
+  in-flight tool call as progress.

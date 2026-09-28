@@ -55,9 +55,13 @@ These are where gaps hide:
 
 ## 6. Calibrate altitude
 
-- **Level 0** — the whole system, ≤ 12 nodes, one node per component.
-- **Level 1** — one request or job end to end, ≤ 20 nodes.
+- **Level 0** — the whole system: one node per component, no internals.
+- **Level 1** — one request or job end to end.
 - **Level 2** — one algorithm or state machine in detail.
+
+If a level will not fit on a screen, split it into its own `NN-topic.mmd` rather
+than shrink the labels; `graph_validate` reports when you are past roughly 25
+nodes. Size is the symptom — two questions in one graph is the cause.
 
 Always deliver Level 0 or 1 first and offer to drill down. Never start at
 Level 2 unless asked.
