@@ -52,6 +52,9 @@ open: `opencode service status`).
   pan, Fit to reset. Zoom/pan is done by driving the SVG `viewBox`, so it stays
   vector-crisp at any magnification. Full-screen present mode, export to
   SVG / PNG / `.mmd`, copy source.
+  PNG export re-renders the diagram with text labels and no `<foreignObject>`
+  (browsers refuse to rasterise those inside an `<img>`), and reports a clear
+  error if the browser can't produce the image.
 - **Selection sync** — hover a node in the preview and its source lines light up;
   click an outline entry to jump to its definition; click a node to jump to it.
 - **Panels** — Files, Outline (nodes + subgraphs), and **Gaps**, which renders

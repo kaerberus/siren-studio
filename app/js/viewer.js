@@ -386,23 +386,76 @@ export function exportSvg(filename = 'diagram.svg') {
   return true;
 }
 
-export async function exportPng(filename = 'diagram.png', scale = 2) {
+// Browsers refuse to rasterise <foreignObject> inside an <img>, and Mermaid uses
+// it for every label when htmlLabels is on. Strip anything left of it.
+function stripForeignObjects(markup) {
+  return markup.replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/g, '');
+}
+
+function viewBoxOf(markup) {
+  const match = markup.match(/viewBox="([^"]+)"/);
+  if (!match) return null;
+  const parts = match[1].split(/[\s,]+/).map(Number);
+  if (parts.length !== 4 || !(parts[2] > 0) || !(parts[3] > 0)) return null;
+  return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+}
+
+/**
+ * Build an SVG suitable for <img> rasterisation: labels as real <text> and no
+ * <foreignObject>. Mermaid needs `htmlLabels` disabled at the TOP level for
+ * flowchart node labels (the per-diagram `flowchart.htmlLabels` alone is not
+ * enough in v11), plus in the flowchart config to drop its measurement divs.
+ */
+export async function buildExportSvg(source) {
+  const saved = config();
+  try {
+    mermaid.initialize({
+      ...saved,
+      htmlLabels: false,
+      flowchart: { ...(saved.flowchart || {}), htmlLabels: false },
+    });
+    const id = `mmd-export-${Date.now()}`;
+    const { svg } = await mermaid.render(id, source);
+    const box = viewBoxOf(svg) || { x: base.x, y: base.y, w: base.w, h: base.h };
+    let markup = stripForeignObjects(svg);
+    // An <img> needs an intrinsic size; Mermaid only sets width="100%".
+    markup = markup.replace(/<svg\b([^>]*)>/, (all, attrs) => {
+      const cleaned = attrs
+        .replace(/\swidth="[^"]*"/, '')
+        .replace(/\sheight="[^"]*"/, '');
+      return `<svg${cleaned} width="${box.w}" height="${box.h}">`;
+    });
+    return { markup, width: box.w, height: box.h };
+  } finally {
+    mermaid.initialize(saved); // restore the interactive preview config
+  }
+}
+
+export async function exportPng(filename = 'diagram.png', source = '', scale = 2) {
   if (!svgEl()) return false;
-  const markup = svgMarkup();
-  const width = base.w;
-  const height = base.h;
-  const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }));
+  const ready = source
+    ? await buildExportSvg(source)
+    : { markup: stripForeignObjects(svgMarkup()), width: base.w, height: base.h };
+  if (!ready || !ready.markup) return false;
+
+  const url = URL.createObjectURL(new Blob([ready.markup], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const image = await loadImage(url);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(width * scale));
-    canvas.height = Math.max(1, Math.round(height * scale));
+    canvas.width = Math.max(1, Math.round(ready.width * scale));
+    canvas.height = Math.max(1, Math.round(ready.height * scale));
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = themeMode === 'light' ? '#ffffff' : '#0b0e14';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const out = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (out) download(out, filename);
+    let out = null;
+    try {
+      out = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    } catch (err) {
+      throw new Error(`canvas is not exportable (${err.message})`);
+    }
+    if (!out) throw new Error('the browser returned an empty image');
+    download(out, filename);
     return true;
   } finally {
     URL.revokeObjectURL(url);
@@ -413,7 +466,7 @@ function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => reject(new Error('the SVG could not be rendered as an image'));
     img.src = url;
   });
 }

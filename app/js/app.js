@@ -847,10 +847,20 @@ function wireUI() {
     if (!kind) return;
     const tab = findTab(state.active);
     const base = (tab?.name || 'diagram').replace(/\.(mmd|mermaid)$/, '');
-    if (kind === 'svg' && !exportSvg(`${base}.svg`)) toast('Nothing to export', 'warn');
-    if (kind === 'png' && !(await exportPng(`${base}.png`))) toast('Nothing to export', 'warn');
-    if (kind === 'mmd') downloadText(tab?.content || '', `${base}.mmd`);
-    if (kind === 'copy') { navigator.clipboard.writeText(tab?.content || ''); toast('Source copied', 'ok'); }
+    try {
+      if (kind === 'svg') {
+        if (!exportSvg(`${base}.svg`)) toast('Nothing to export', 'warn');
+        else toast('Saved SVG', 'ok');
+      }
+      if (kind === 'png') {
+        if (!(await exportPng(`${base}.png`, tab?.content || ''))) toast('Nothing to export', 'warn');
+        else toast('Saved PNG', 'ok');
+      }
+      if (kind === 'mmd') downloadText(tab?.content || '', `${base}.mmd`);
+      if (kind === 'copy') { navigator.clipboard.writeText(tab?.content || ''); toast('Source copied', 'ok'); }
+    } catch (err) {
+      toast(`Export failed: ${err.message}. Try Download SVG.`, 'err');
+    }
   };
 
   $('zoom-in').onclick = () => zoom(1.2);
