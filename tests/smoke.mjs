@@ -283,6 +283,30 @@ try {
   const analysis = studio.analyzeGraph('flowchart TD\n  A[X] --> B{Y}\n  B -->|no| C[(Z)]');
   check('graph analysis finds nodes with labels', analysis.nodes.length === 3,
     analysis.nodes.map((n) => `${n.id}:${n.label}`).join(','));
+
+  // a user turn whose prompt carried inlined files should fold them away
+  const withAttach = 'Rename the decision?\n\n'
+    + 'Current diagram (a.mmd):\n\n```mermaid\nflowchart LR\n    UI --> API\n```\n\n'
+    + 'Current gap ledger (a.gaps.md):\n\n```markdown\n- [ ] retry policy\n```';
+  studio.renderChat([
+    { id: 'u_plain', type: 'user', text: 'Just a question.' },
+    { id: 'u_attach', type: 'user', text: withAttach },
+  ]);
+  const userMsgs = [...document.querySelectorAll('#chat-log .msg.user')];
+  check('plain user message has no attachment fold',
+    Boolean(userMsgs[0]) && !userMsgs[0].querySelector('details'));
+  const fold = userMsgs[1]?.querySelector('details.msg-attach');
+  check('inlined attachments fold into <details>', Boolean(fold));
+  check('the fold starts collapsed', Boolean(fold) && fold.open === false);
+  const summaryText = fold?.querySelector('summary')?.textContent || '';
+  check('the summary names both files',
+    /a\.mmd/.test(summaryText) && /a\.gaps\.md/.test(summaryText), summaryText);
+  const questionText = userMsgs[1]?.querySelector('.msg-body p')?.textContent || '';
+  check('the question stays visible outside the fold',
+    /Rename the decision\?/.test(questionText), questionText);
+  const foldText = fold?.textContent || '';
+  check('the folded source survives, unfenced',
+    /flowchart LR/.test(foldText) && !foldText.includes('```'));
 } catch (err) {
   check('chat rendering block', false, err.message);
 }
@@ -392,6 +416,36 @@ try {
 
   check('contentKey ignores empty messages', a.contentKey({ content: [{ type: 'reasoning', text: '' }] }) === null);
   check('contentKey detects text', a.contentKey({ content: [{ type: 'text', text: 'hi' }] }) === '2:0:');
+
+  // the header buildPrompt writes is the one the transcript parser recognises,
+  // including the "untitled" / "none" fallbacks
+  for (const [kind, p, expected] of [
+    ['diagram', 'a.mmd', 'a.mmd'],
+    ['ledger', 'a.gaps.md', 'a.gaps.md'],
+    ['diagram', '', 'untitled'],
+    ['ledger', '', 'none'],
+  ]) {
+    const header = a.attachmentHeader(kind, p);
+    const parsed = a.parseAttachmentHeader(header);
+    check(`attachment header round-trips (${kind}, ${p || 'default'})`,
+      Boolean(parsed) && parsed.kind === kind && parsed.label === expected,
+      `${header} -> ${JSON.stringify(parsed)}`);
+  }
+  check('a normal line is not an attachment header', a.parseAttachmentHeader('hello') === null);
+
+  const split = a.splitPrompt('Why this shape?\n\n'
+    + a.attachmentHeader('diagram', 'a.mmd') + '\n\n```mermaid\nflowchart LR\n    UI --> API\n```\n\n'
+    + a.attachmentHeader('ledger', 'a.gaps.md') + '\n\n```markdown\n- [ ] q\n```');
+  check('splitPrompt separates the question from the attachments',
+    split.question === 'Why this shape?' && split.attachments.length === 2,
+    JSON.stringify(split.attachments.map((x) => x.label)));
+  check('splitPrompt unfences each attachment body',
+    split.attachments[0].source === 'flowchart LR\n    UI --> API'
+      && split.attachments[1].source === '- [ ] q',
+    JSON.stringify(split.attachments.map((x) => x.source)));
+  const plain = a.splitPrompt('just words');
+  check('splitPrompt leaves a message without attachments alone',
+    plain.question === 'just words' && plain.attachments.length === 0);
 } catch (err) { check('turn logic block', false, err.message); }
 
 // stall notice + empty-response rendering

@@ -437,6 +437,22 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 .msg-actions button:hover { color: var(--accent); border-color: var(--accent); }
 .msg-body .cursor::after { content: "▋"; color: var(--accent); animation: blink 1s step-end infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+/* A user turn that carried inlined files: the question stays, the files fold. */
+.msg-attach { margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 6px; }
+.msg-attach > summary {
+  cursor: pointer; list-style: none; font-family: var(--font-mono);
+  font-size: 11px; color: var(--text-faint);
+}
+.msg-attach > summary::-webkit-details-marker { display: none; }
+.msg-attach > summary::before { content: "▸ "; }
+.msg-attach[open] > summary::before { content: "▾ "; }
+.msg-attach > summary:hover { color: var(--text); }
+.attach-item { margin-top: 8px; }
+.attach-name {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--text-faint); margin-bottom: 4px;
+}
+.attach-item pre { margin: 0; }
 .chat-empty { margin: auto; text-align: center; color: var(--text-faint); font-size: 12.5px; line-height: 1.7; padding: 20px; }
 .chat-empty strong { color: var(--text); }
 

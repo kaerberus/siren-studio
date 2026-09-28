@@ -8,7 +8,7 @@ import {
   setEmptyVisible, focusNode, resetView, parseSource, setSmartView, isTransposed,
   getRenderedSource,
 } from './viewer.js';
-import { createAgent, extractAssistant, toolLabel } from './agent.js';
+import { createAgent, extractAssistant, splitPrompt, toolLabel } from './agent.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -858,7 +858,7 @@ function renderChat(messages) {
 
   for (const message of visible) {
     if (message.type === 'user') {
-      host.appendChild(messageNode('user', message.text || ''));
+      host.appendChild(userMessageNode(message.text || ''));
     } else if (message.type === 'assistant') {
       const parsed = extractAssistant(message);
       const node = document.createElement('div');
@@ -895,13 +895,43 @@ function renderChat(messages) {
   if (atBottom) host.scrollTop = host.scrollHeight;
 }
 
-function messageNode(role, text) {
+/**
+ * A user turn. The prompt we send inlines the current diagram and ledger, so
+ * the stored text is the question plus two whole files. Show the question and
+ * fold the files away — the model still received all of it.
+ */
+function userMessageNode(text) {
   const node = document.createElement('div');
-  node.className = `msg ${role}`;
-  node.innerHTML = `<div class="msg-role">${role === 'user' ? 'You' : role}</div>`;
+  node.className = 'msg user';
+  node.innerHTML = '<div class="msg-role">You</div>';
   const body = document.createElement('div');
   body.className = 'msg-body';
-  body.innerHTML = markdownToHtml(text);
+
+  const { question, attachments } = splitPrompt(text);
+  if (question) body.innerHTML = markdownToHtml(question);
+
+  if (attachments.length) {
+    const details = document.createElement('details');
+    details.className = 'msg-attach';
+    const summary = document.createElement('summary');
+    summary.textContent = `attached: ${attachments.map((a) => a.label).join(', ')}`;
+    details.appendChild(summary);
+    for (const attachment of attachments) {
+      const item = document.createElement('div');
+      item.className = 'attach-item';
+      const name = document.createElement('div');
+      name.className = 'attach-name';
+      name.textContent = `${attachment.kind} · ${attachment.label}`;
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.textContent = attachment.source;
+      pre.appendChild(code);
+      item.append(name, pre);
+      details.appendChild(item);
+    }
+    body.appendChild(details);
+  }
+
   node.appendChild(body);
   return node;
 }

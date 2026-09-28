@@ -76,19 +76,27 @@ Verified against the live model (`deepseek-flash`), fresh session:
 The agent is installed by symlink, so this is live without re-running
 `install-agent.py`.
 
-### 3. Collapse attachments in the chat transcript
+### 3. ~~Collapse attachments in the chat transcript~~ — DONE
 
-`buildPrompt` (`app/js/agent.js`) inlines the diagram and ledger as text, so the
-user's own message bubble contains two whole files, and the agent tends to quote
-them back.
+`buildPrompt` inlines the diagram and ledger as text, so the stored user message
+is the question plus two whole files. The transcript now splits that apart:
+`splitPrompt` in `agent.js` returns `{ question, attachments }`, and the user
+bubble renders the question normally with the files folded into a collapsed
+`<details>` reading *attached: a.mmd, a.gaps.md*. Each file keeps its own heading
+(`diagram · a.mmd`) and its source unfenced.
 
-Render-only fix: split the user message on the `Current diagram (…)` /
-`Current gap ledger (…)` markers, show the user's actual question, and fold the
-rest into a collapsed `<details>` reading *"attached: a.mmd, a.gaps.md"*. The
-model still receives exactly what it does today (including unsaved buffer edits —
-which is why we inline rather than use file attachments).
+Render-only — the model still receives exactly what it did before, including
+unsaved buffer edits, which is why we inline rather than use file attachments.
 
-Export the markers from one place so `buildPrompt` and the renderer can't drift.
+The markers live in one place: `attachmentHeader(kind, path)` is what
+`buildPrompt` writes and `parseAttachmentHeader(line)` is its inverse, so the
+builder and the renderer cannot drift. The `untitled` / `none` fallbacks are
+part of the round trip.
+
+Checked in `smoke.mjs`: the header round-trips for both kinds and both fallbacks,
+`splitPrompt` unfences the bodies and leaves a plain message alone, and the DOM
+renders a collapsed `<details>` that names both files while the question stays
+outside the fold.
 
 ### 4. Resizeable agent panel
 

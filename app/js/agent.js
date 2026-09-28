@@ -247,11 +247,11 @@ export function createAgent({
   function buildPrompt(text, context) {
     const parts = [text.trim()];
     if (context?.graph && context.attachGraph) {
-      parts.push(`Current diagram (${context.graphPath || 'untitled'}):`);
+      parts.push(attachmentHeader('diagram', context.graphPath));
       parts.push('```mermaid\n' + context.graph.trim() + '\n```');
     }
     if (context?.gaps && context.attachGaps) {
-      parts.push(`Current gap ledger (${context.gapsPath || 'none'}):`);
+      parts.push(attachmentHeader('ledger', context.gapsPath));
       parts.push('```markdown\n' + context.gaps.trim() + '\n```');
     }
     return parts.join('\n\n');
@@ -314,6 +314,65 @@ export function createAgent({
 }
 
 // ── pure helpers (unit-tested) ─────────────────────────────────────────────
+
+// The header lines `buildPrompt` writes before an inlined attachment. Declared
+// once so the prompt builder and the transcript renderer cannot drift.
+const ATTACHMENT_PREFIX = { diagram: 'Current diagram', ledger: 'Current gap ledger' };
+
+/** Header line written before an attachment of `kind`. */
+export function attachmentHeader(kind, path) {
+  const fallback = kind === 'ledger' ? 'none' : 'untitled';
+  return `${ATTACHMENT_PREFIX[kind]} (${path || fallback}):`;
+}
+
+/** Reverse of attachmentHeader: `{ kind, label }`, or null if not a header. */
+export function parseAttachmentHeader(line) {
+  const text = String(line).trimEnd();
+  for (const [kind, prefix] of Object.entries(ATTACHMENT_PREFIX)) {
+    const open = `${prefix} (`;
+    if (text.startsWith(open) && text.endsWith('):')) {
+      return { kind, label: text.slice(open.length, -2) };
+    }
+  }
+  return null;
+}
+
+/** Strip the ```lang fence `buildPrompt` wrapped an attachment body in. */
+function unfence(text) {
+  const trimmed = String(text).trim();
+  const fenced = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
+  return fenced ? fenced[1] : trimmed;
+}
+
+/**
+ * Split a stored user prompt into what the reader typed and the diagram /
+ * ledger `buildPrompt` inlined after it, so the transcript can show the
+ * question and fold the files away. Render-only: the model still receives the
+ * whole prompt, including unsaved buffer edits.
+ * @returns {{question: string, attachments: Array<{kind: string, label: string, source: string}>}}
+ */
+export function splitPrompt(text) {
+  const question = [];
+  const attachments = [];
+  let current = null;
+  for (const line of String(text ?? '').split('\n')) {
+    const header = parseAttachmentHeader(line);
+    if (header) {
+      current = { ...header, body: [] };
+      attachments.push(current);
+    } else if (current) {
+      current.body.push(line);
+    } else {
+      question.push(line);
+    }
+  }
+  return {
+    question: question.join('\n').trim(),
+    attachments: attachments.map(({ kind, label, body }) => ({
+      kind, label, source: unfence(body.join('\n')),
+    })),
+  };
+}
 
 /** Signature of an assistant message's output; null when it has produced none. */
 export function contentKey(message) {
