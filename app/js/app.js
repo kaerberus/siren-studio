@@ -353,6 +353,13 @@ function handleNotice(notice) {
     text.textContent = `${notice.model} finished without producing a response.`;
     retry.hidden = false;
     stop.hidden = true;
+  } else if (notice.type === 'no-agent') {
+    box.classList.add('err');
+    text.innerHTML = `The <code>${escapeHtml(notice.agent)}</code> agent isn't installed, `
+      + `so this turn can't run. Install it with <code>python3 install-agent.py</code>, `
+      + `then Retry.`;
+    retry.hidden = false;
+    stop.hidden = true;
   }
 }
 

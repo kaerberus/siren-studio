@@ -28,6 +28,9 @@ export function createAgent({
   let turn = null;            // see beginTurn()
   let lastRequest = null;     // { text, context } for Retry
   let assistantCount = 0;     // assistant messages seen in the session so far
+  let configRef = null;       // the cached config, repaired with fresh agents
+  let installed = null;       // true | false | null (unknown)
+  let installedAt = 0;
 
   const modelLabel = () => (model ? `${model.providerID}/${model.id}${model.variant ? `#${model.variant}` : ''}` : 'default model');
   const shortId = () => (sessionId ? sessionId.replace(/^ses_/, '').slice(0, 6) : '');
@@ -110,22 +113,15 @@ export function createAgent({
     if (selectedModel) model = selectedModel;
     setStatus('connecting…');
 
-    let available = hasAgent(config);
-    if (!available) {
-      // The agent list is the only way to know whether the agent exists: creating
-      // a session with an unknown agent id succeeds regardless, so the call tells
-      // us nothing. Refresh rather than report a stale "not installed".
-      const fresh = await oc.agents().catch(() => null);
-      const list = fresh?.data || [];
-      if (list.length) {
-        if (config?.oc) config.oc.agents = list;
-        available = list.some((agent) => agent.id === AGENT_ID);
-      }
-    }
+    configRef = config;
+    // The agent list is the only way to know whether the agent exists: creating a
+    // session with an unknown agent id succeeds regardless, so the call tells us
+    // nothing. Refresh rather than report a stale "not installed".
+    const present = hasAgent(config) ? true : await refreshInstalled();
 
     try {
       await ensureSession();
-      setStatus(available ? readyLabel() : `${AGENT_ID} not installed`);
+      setStatus(present === false ? `${AGENT_ID} not installed` : readyLabel());
       startStream();
     } catch (err) {
       setStatus(`offline · ${err.message}`);
@@ -134,6 +130,28 @@ export function createAgent({
 
   function hasAgent(config) {
     return (config?.oc?.agents || []).some((agent) => agent.id === AGENT_ID);
+  }
+
+  /**
+   * Is the agent installed? true / false / null when we could not find out.
+   * Only ever reports false on positive evidence (a real, non-empty agent list
+   * without it), so a failed or empty fetch never claims it is missing.
+   */
+  async function agentInstalled({ force = false } = {}) {
+    if (!force && installed !== null && Date.now() - installedAt < 30_000) return installed;
+    return refreshInstalled();
+  }
+
+  async function refreshInstalled() {
+    try {
+      const listing = await oc.agents();
+      const list = listing?.data || [];
+      if (!list.length) return installed;
+      if (configRef?.oc) configRef.oc.agents = list;
+      installed = list.some((agent) => agent.id === AGENT_ID);
+      installedAt = Date.now();
+    } catch (_) { /* leave the last known answer */ }
+    return installed;
   }
 
   async function setModel(next) {
@@ -241,6 +259,14 @@ export function createAgent({
 
   async function send(text, context = {}) {
     if (!text || !text.trim()) return;
+    if (await agentInstalled() === false) {
+      // OpenCode accepts a session for an agent id it does not know, then fails
+      // the turn asynchronously as AgentNotFound, leaving the session empty. Say
+      // so here rather than let the stall notice blame the model.
+      installed = null; // re-check next time, so Retry works after installing
+      notice({ type: 'no-agent', agent: AGENT_ID });
+      return;
+    }
     lastRequest = { text, context };
     await ensureSession();
     beginTurn();
