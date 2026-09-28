@@ -258,6 +258,8 @@ class OpenCode:
         self.url = ""
         self._auth = ""
         self.info: dict | None = None
+        self._agents: list[dict] = []
+        self._agents_at: float = 0.0
 
     def configure(self, discovery: dict | None, explicit_url: str | None) -> None:
         if explicit_url:
@@ -305,6 +307,33 @@ class OpenCode:
         with resp:
             data = resp.read()
         return json.loads(data) if data else None
+
+    def agents(self, max_age: float = 300.0) -> list[dict]:
+        """Agent list, falling back to the last good answer when OpenCode is busy.
+
+        A slow /api/agent must not make the editor briefly claim the Graph
+        Engineer does not exist.
+        """
+        for attempt in range(2):
+            try:
+                listing = self.json("GET", "/api/agent", timeout=20)
+                data = [{
+                    "id": agent.get("id"),
+                    "name": agent.get("name"),
+                    "mode": agent.get("mode"),
+                    "hidden": agent.get("hidden", False),
+                } for agent in (listing or {}).get("data", [])]
+                if data:
+                    self._agents = data
+                    self._agents_at = time.time()
+                    return data
+                break
+            except Exception:  # noqa: BLE001
+                if attempt == 0:
+                    time.sleep(0.4)
+        if self._agents and (time.time() - self._agents_at) < max_age:
+            return self._agents
+        return []
 
     def health(self) -> tuple[bool, str]:
         if not self.configured:
@@ -652,23 +681,7 @@ class Handler(BaseHTTPRequestHandler):
         ok, ver = self.oc.health()
         agents: list[dict] = []
         if ok:
-            # A busy OpenCode can take a while to answer; retry once rather than
-            # reporting "no agents" and hiding the Graph Engineer.
-            for attempt in range(2):
-                try:
-                    listing = self.oc.json("GET", "/api/agent", timeout=20)
-                    for agent in (listing or {}).get("data", []):
-                        agents.append({
-                            "id": agent.get("id"),
-                            "name": agent.get("name"),
-                            "mode": agent.get("mode"),
-                            "hidden": agent.get("hidden", False),
-                        })
-                    break
-                except Exception:  # noqa: BLE001
-                    agents = []
-                    if attempt == 0:
-                        time.sleep(0.4)
+            agents = self.oc.agents()
         self._json({
             "version": VERSION,
             "workspace": str(self.workspace.root),

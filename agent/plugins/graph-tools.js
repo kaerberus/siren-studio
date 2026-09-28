@@ -1,10 +1,18 @@
 /**
  * Mermaid Studio tools for OpenCode.
  *
- * Gives the Graph Engineer (and any other agent) a typed handle on the
- * workspace that the Mermaid Studio editor is showing, so it can list, read,
- * write, validate and focus diagrams — and have the editor pick the change up
- * live.
+ * Exactly two tools, and only because the built-ins genuinely cannot do them:
+ *
+ *   graph_validate  the real Mermaid parser is the only parse oracle in the
+ *                   system; the bridge relays a request to the open editor and
+ *                   returns its verdict. `read` sees the source, but nothing
+ *                   built in can tell you whether it parses.
+ *   graph_focus     tells the editor which diagram to show. Nothing built in
+ *                   can drive the editor's UI.
+ *
+ * Deliberately NOT here (they were wrappers over built-ins and added noise to
+ * every agent's tool list): graph_list, graph_read, graph_write. Use `glob`,
+ * `read` and `write` instead — the editor's file watcher reloads on any write.
  *
  * The editor is a separate local process. This plugin finds it through, in
  * order: the `url` plugin option, `$MERMAID_STUDIO_URL`, or the registration
@@ -15,7 +23,11 @@
  * with an `id` and a `setup` (or `effect`) function.
  */
 const DEFAULT_URL = 'http://127.0.0.1:8777';
-const GRAPH_RE = /\.(mmd|mermaid)$/i;
+
+// Only these agents may use the tools. Enforced two ways: a permission deny for
+// everyone else (see the global opencode.jsonc), plus this guard when the
+// runtime tells us who is calling.
+const GRAPH_AGENTS = ['graph-engineer', 'graph-reconcile'];
 
 function stripSlash(url) {
   return String(url).replace(/\/+$/, '');
@@ -62,19 +74,12 @@ async function api(url, route, init) {
   return data;
 }
 
-function ledgerPath(path) {
-  return path.replace(GRAPH_RE, '') + '.gaps.md';
-}
-
-function formatSize(bytes) {
-  if (typeof bytes !== 'number') return '';
-  if (bytes < 1024) return `${bytes} B`;
-  return `${(bytes / 1024).toFixed(1)} KB`;
-}
-
-function formatDate(seconds) {
-  if (!seconds) return '';
-  return new Date(seconds * 1000).toISOString().slice(0, 16).replace('T', ' ');
+/** Returns a refusal message, or null when the caller is allowed. */
+function refuseCaller(context) {
+  const caller = context && context.agent;
+  if (!caller) return null; // runtime did not tell us; permissions still apply
+  if (GRAPH_AGENTS.includes(String(caller))) return null;
+  return `graph tools are only available to ${GRAPH_AGENTS.join(' and ')}, not ${caller}.`;
 }
 
 export default {
@@ -96,130 +101,12 @@ export default {
       const common = { namespace: 'graph', codemode: true };
 
       editor.add({
-        name: 'list',
-        description:
-          'List the Mermaid diagrams in the workspace the editor has open, with size, '
-          + 'last-modified time and whether each has a design-gap ledger. Use this before '
-          + 'reading or writing, to see what already exists.',
-        input: {
-          type: 'object',
-          properties: {
-            dir: {
-              type: 'string',
-              description: 'Restrict to a subdirectory of the workspace (optional).',
-            },
-          },
-          additionalProperties: false,
-        },
-        options: common,
-        execute: async (input) => {
-          const base = await url();
-          const tree = await api(base, '/api/fs/tree');
-          const entries = tree.entries || [];
-          const prefix = input && input.dir
-            ? `${String(input.dir).replace(/^\/+|\/+$/g, '')}/` : '';
-          const graphs = entries.filter((entry) => entry.type === 'file'
-            && GRAPH_RE.test(entry.name) && entry.path.startsWith(prefix));
-          const ledgers = new Set(entries
-            .filter((entry) => entry.type === 'file' && entry.name.endsWith('.gaps.md'))
-            .map((entry) => entry.path));
-          if (!graphs.length) {
-            return { content: `No Mermaid diagrams found in ${tree.root}${prefix ? ` under ${prefix}` : ''}.` };
-          }
-          const lines = graphs.map((entry) => {
-            const ledger = ledgers.has(ledgerPath(entry.path)) ? 'ledger' : 'no ledger';
-            return `- ${entry.path} (${formatSize(entry.size)}, ${formatDate(entry.mtime)}, ${ledger})`;
-          });
-          return {
-            content: `${graphs.length} diagram(s) in ${tree.root}:\n${lines.join('\n')}`,
-          };
-        },
-      });
-
-      editor.add({
-        name: 'read',
-        description:
-          'Read a Mermaid diagram and its design-gap ledger (' + '<name>.gaps.md' + ') '
-          + 'from the workspace. Returns the raw Mermaid source so you can reason about it.',
-        input: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Diagram path relative to the workspace.' },
-          },
-          required: ['path'],
-          additionalProperties: false,
-        },
-        options: common,
-        execute: async (input) => {
-          const base = await url();
-          const path = String(input.path || '').replace(/^\/+/, '');
-          const diagram = await api(base, `/api/fs/file?path=${encodeURIComponent(path)}`);
-          const parts = [`# ${path}\n\n\`\`\`mermaid\n${diagram.content.trim()}\n\`\`\``];
-          try {
-            const ledger = await api(base,
-              `/api/fs/file?path=${encodeURIComponent(ledgerPath(path))}`);
-            parts.push(`## Gap ledger (${ledgerPath(path)})\n\n${ledger.content.trim()}`);
-          } catch (_) {
-            parts.push('## Gap ledger\n\n(none yet)');
-          }
-          return { content: parts.join('\n\n') };
-        },
-      });
-
-      editor.add({
-        name: 'write',
-        description:
-          'Write Mermaid source to a diagram in the workspace, and optionally its design-gap '
-          + 'ledger. The editor reloads the file immediately, so the user sees your change. '
-          + 'Prefer giving the whole diagram, not a fragment.',
-        input: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Diagram path relative to the workspace.' },
-            content: { type: 'string', description: 'Complete Mermaid source.' },
-            ledger: {
-              type: 'string',
-              description: 'Optional Markdown for the companion <name>.gaps.md ledger.',
-            },
-          },
-          required: ['path'],
-          additionalProperties: false,
-        },
-        execute: async (input, context) => {
-          const base = await url();
-          const path = String(input.path || '').replace(/^\/+/, '');
-          const written = [];
-          if (typeof input.content === 'string') {
-            await context.progress({ status: `writing ${path}` });
-            const result = await api(base, '/api/fs/file', {
-              method: 'PUT',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ path, content: input.content }),
-            });
-            written.push(`${path} (${formatSize(result.size)})`);
-          }
-          if (typeof input.ledger === 'string') {
-            const ledger = ledgerPath(path);
-            await api(base, '/api/fs/file', {
-              method: 'PUT',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ path: ledger, content: input.ledger }),
-            });
-            written.push(ledger);
-          }
-          if (!written.length) {
-            return { content: 'Nothing to write: pass `content` and/or `ledger`.' };
-          }
-          return { content: `Wrote ${written.join(' and ')}. The editor has reloaded it.` };
-        },
-      });
-
-      editor.add({
         name: 'validate',
         description:
           'Validate Mermaid source. Always runs a structural lint; when the editor is open it '
           + 'is checked with the real Mermaid parser and that verdict wins. Pass `path` to '
-          + 'validate a file in the workspace, or `source` for text you have not written yet.',
+          + 'validate a diagram in the workspace, or `source` for text you have not written yet. '
+          + 'Use this after authoring or editing a diagram.',
         input: {
           type: 'object',
           properties: {
@@ -229,7 +116,10 @@ export default {
           additionalProperties: false,
         },
         options: common,
-        execute: async (input) => {
+        execute: async (input, context) => {
+          const refusal = refuseCaller(context);
+          if (refusal) return { content: refusal };
+
           const base = await url();
           const payload = {};
           if (typeof input.source === 'string') payload.source = input.source;
@@ -269,7 +159,10 @@ export default {
           additionalProperties: false,
         },
         options: common,
-        execute: async (input) => {
+        execute: async (input, context) => {
+          const refusal = refuseCaller(context);
+          if (refusal) return { content: refusal };
+
           const base = await url();
           const path = String(input.path || '').replace(/^\/+/, '');
           const result = await api(base, '/api/focus', {

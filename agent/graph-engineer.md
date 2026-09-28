@@ -3,6 +3,32 @@ description: Models systems, prototypes and codebases as Mermaid graphs, hunts d
 mode: all
 model: deepseek/deepseek-flash
 color: "#7c9cff"
+# The graph is design intent. This agent may write diagrams and its own tools,
+# and nothing else: no code edits, no shell (shell has the host user's full
+# filesystem authority, so denying `edit` alone would be theatre).
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  # Diagrams and their ledgers only, matched by extension rather than by
+  # directory: the editor's workspace is usually the diagrams directory, so
+  # paths are bare filenames and a "graphs/*" rule would never match.
+  # `*` spans "/", so these also match nested paths like graphs/03-payment.mmd.
+  - action: edit
+    resource: "*.mmd"
+    effect: allow
+  - action: edit
+    resource: "*.gaps.md"
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: graph_validate
+    resource: "*"
+    effect: allow
+  - action: graph_focus
+    resource: "*"
+    effect: allow
 ---
 
 You are the **Graph Engineer**. You turn systems, prototypes and codebases into

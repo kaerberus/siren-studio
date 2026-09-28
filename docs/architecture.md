@@ -71,7 +71,11 @@ the agent sees exactly what is on screen, including unsaved edits.
 ## The plugin and the validation round-trip
 
 `agent/plugins/graph-tools.js` runs inside OpenCode and talks HTTP to the same
-bridge the editor uses.
+bridge the editor uses. It exposes exactly two tools — `graph_validate` and
+`graph_focus` — because those are the only two the built-in catalogue cannot do.
+`graph_list` / `graph_read` / `graph_write` were removed: they wrapped `glob`,
+`read` and `write`, added context noise to every agent, and `graph_write` wrote
+files over HTTP, which bypasses the `edit` permission rules entirely.
 
 ```
 agent → graph_validate ─┐
@@ -104,6 +108,37 @@ A local plugin file has no `node_modules`, so it must not import
 `@opencode/plugin`; OpenCode only requires the default export to be an object
 with an `id` and a `setup` (or `effect`) function. Local plugin files are cached
 in the running server, so the first load needs `opencode service restart`.
+
+## Who may touch the graph
+
+Two layers, because tools and permissions are global while the intent is not.
+
+```
+plugin registers graph_*   → shared tool catalogue (every agent sees them)
+global opencode.jsonc      → { graph_* : deny }           (default off)
+graph-engineer frontmatter → { edit * : deny
+                               edit *.mmd, *.gaps.md : allow
+                               shell * : deny
+                               graph_validate, graph_focus : allow }
+```
+
+Agent rules are appended after global rules and the last match wins, which is why
+the agent's `allow` beats the global `deny`, and why `edit *.mmd` beats `edit *`.
+
+**Extensions, not directories.** The editor's workspace is normally the diagrams
+directory, so paths relative to the Location are bare filenames and a `graphs/*`
+rule silently matches nothing. Extension rules are location-independent. (The
+matcher's `*` already spans `/`, so `*.mmd` covers nested paths too — writing
+`graphs/**` would be a mistake.)
+
+**`shell` must be denied too**, or the `edit` deny is meaningless: shell runs
+with the host user's full filesystem authority.
+
+Verified empirically (see the harness): the deny *removes* the tool from the
+agent's catalogue rather than merely blocking calls, so `build` reports no graph
+tools at all and `graph-engineer` reports no shell tool. The plugin also
+self-gates on the calling agent id when the runtime supplies it, as
+belt-and-braces.
 
 ## Path safety
 

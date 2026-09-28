@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permissions": [
+    {
+      "action": "graph_*",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ]
+}

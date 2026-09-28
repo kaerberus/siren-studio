@@ -1,8 +1,12 @@
 # Mermaid Studio
 
 A local, web-based Mermaid editor with a live graph viewer and an **OpenCode
-"Graph Engineer" agent** you can talk to from either side — the editor's chat
-panel or the OpenCode terminal — to model systems and hunt down design gaps.
+"Graph Engineer" agent** you talk to from the editor, to model systems and hunt
+down design gaps.
+
+The graph is **design intent**. You and the agent agree it in the editor; code is
+written against it; the agent updates it deliberately, with your approval, when
+reality drifts.
 
 No Node, no bundler, no build step. Python 3 (stdlib only) serves the app and
 bridges to the OpenCode API; Mermaid and CodeMirror are vendored so it works
@@ -25,8 +29,8 @@ offline.
 ```
 
 The diagram files are the shared state: the agent edits them, the editor
-live-reloads. You can hone a graph from the terminal or the editor and see it in
-both.
+live-reloads. The editor is the only surface for graph work — the graph is a
+visual artifact and the loop is *look → point → adjust*.
 
 ## Quick start
 
@@ -78,8 +82,10 @@ open: `opencode service status`).
 ## The Graph Engineer agent
 
 Installed to `~/.config/opencode/agents/graph-engineer.md` (symlinked from
-`agent/`), so it is available in every project. It is a `mode: all` agent, so you
-can select it as the primary agent in the TUI or launch it as a subagent.
+`agent/`). It is a global agent — it has to be, so it is available whichever
+project you point the editor at — and that means it also *appears* in the TUI.
+Ignore that. It is built for the editor; there is no useful way to hold a
+conversation about a diagram you cannot see.
 
 The agent follows a fixed method: recon → choose diagram type → draft with a
 consistent visual vocabulary → validate → **gap analysis** → present gaps as
@@ -90,15 +96,41 @@ It is pinned to `deepseek/deepseek-flash` via the `model:` field in its
 frontmatter; remove that line to let it inherit whatever OpenCode is set to.
 The editor's model picker can override it per session.
 
-### Using it from OpenCode
+### Permissions: graphs only, and no shell
 
-```sh
-opencode --agent graph-engineer
-# or from inside a session:
-#   @graph-engineer model this codebase's request path
+`graph-engineer` can write diagrams and nothing else. In its frontmatter:
+
+```yaml
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny            # never touch code
+  - action: edit
+    resource: "*.mmd"       # diagrams only, by extension
+    effect: allow
+  - action: edit
+    resource: "*.gaps.md"   # and their ledgers
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: deny            # shell has full filesystem authority; denying
+                            # `edit` alone would be theatre
 ```
 
-Ask it to model the project; it writes `.mmd` files; the editor live-reloads.
+Why **by extension, not by directory?** Because the editor's workspace is usually
+the diagrams directory itself, so paths relative to the OpenCode Location are
+bare filenames — `graphs/*` would never match and the agent could write nothing.
+Extension rules work wherever the diagrams live.
+
+`edit` covers `edit`, `write` and `patch`, and the matcher's `*` already spans
+`/`, so `*.mmd` also matches `graphs/nested/thing.mmd`. Agent rules are appended
+after global rules and the last match wins, which is why the `allow` beats the
+`deny`. If you keep diagrams in `.md` files, add a rule for that extension
+yourself — `*.md` is deliberately not allowed, since it would also permit editing
+`README.md` and `AGENTS.md`.
+
+This is guardrails, not a sandbox. It stops the agent *accidentally* changing
+your code. It is not a jail against a hostile agent.
 
 ### Using it from the editor
 
@@ -135,6 +167,36 @@ agent:
 - `codebase-to-flow.md` — extracting flows from source
 - `ledger-template.md` — the gap-ledger format
 
+## Making the graph inform development
+
+Nothing about the graph reaches your coding agents until you tell them it exists.
+The mechanism is a project `AGENTS.md` — V2 recognises that file only, and the
+`instructions` config array is not resolved in V2, so don't reach for it.
+
+Drop a section like this in the project root (this repo's own `AGENTS.md` is the
+same text):
+
+```md
+## `graphs/` is design intent, not documentation
+
+- Before implementing or changing a flow, read the relevant `graphs/*.mmd`.
+- Read its `*.gaps.md` ledger too. Open questions there are unresolved
+  decisions — raise them, do not invent an answer.
+- Never edit anything under `graphs/` as part of a coding task. If a graph is
+  wrong, say so and stop.
+- If your implementation diverges from the graph, say so explicitly. A mismatch
+  is a design change that needs a decision.
+```
+
+That is the whole "seeding" step: point `plan` or `build` at a well-designed
+graph and let the diagram be the spec. There is no code generation from graphs,
+and there shouldn't be — graphs are coarse and codegen from a coarse model gets
+ugly fast.
+
+You can also put an `AGENTS.md` inside `graphs/` with the diagram conventions.
+Nested instruction files are loaded when an agent first reads a file in that
+directory, so they arrive exactly when relevant instead of in every prompt.
+
 ## Layout
 
 ```
@@ -149,8 +211,10 @@ opencode-mermaid/
 ├─ graphs/                  default workspace (examples)
 ├─ agent/                   agent, skill and plugin sources
 │  ├─ graph-engineer.md
+│  ├─ global-permissions.json   graph_* denied to every agent by default
 │  ├─ skills/graph-engineering/
 │  └─ plugins/graph-tools.js
+├─ AGENTS.md                tells other agents the graph is design intent
 └─ docs/architecture.md
 ```
 
@@ -167,20 +231,39 @@ opencode-mermaid/
 - **Binds to `127.0.0.1` only.** It is a single-user local tool: any local
   process that can reach the port can read and write the workspace.
 
-## OpenCode plugin: `graph_*` tools
+## OpenCode plugin: two tools
 
-`agent/plugins/graph-tools.js` is installed alongside the agent and gives it a
-typed handle on the workspace the editor is showing:
+`agent/plugins/graph-tools.js` adds exactly two tools, and only because the
+built-ins genuinely cannot do them:
 
-| tool | what it does |
-| --- | --- |
-| `graph_list` | list diagrams with size, mtime and whether each has a gap ledger |
-| `graph_read` | read a diagram **and** its `.gaps.md` ledger |
-| `graph_write` | write diagram source and/or the ledger; the editor reloads live |
-| `graph_validate` | structural lint always, upgraded to the **real Mermaid parser** when the editor is open |
-| `graph_focus` | ask the editor to open a diagram and bring it forward |
+| tool | what it does | why not a built-in |
+| --- | --- | --- |
+| `graph_validate` | structural lint, upgraded to the **real Mermaid parser** when the editor is open | `read` sees the source but nothing built in can tell you whether it parses |
+| `graph_focus` | ask the editor to open a diagram and bring it forward | nothing built in can drive the editor's UI |
 
-In Code Mode they appear as `tools.graph.list(...)` and friends.
+In Code Mode they appear as `tools.graph.validate(...)` and
+`tools.graph.focus(...)`.
+
+**What is deliberately *not* there.** Earlier versions also shipped `graph_list`,
+`graph_read` and `graph_write`. They were wrappers over `glob`, `read` and
+`write`, and because plugin tools land in the shared catalogue with every
+agent's default policy of `allow *`, they added noise to `build`, `plan` and
+`explore` too. `graph_write` was worse than noise: it wrote files over HTTP,
+bypassing the `edit` permission rules. Use the built-ins — the editor's file
+watcher reloads on any write.
+
+**Only the graph agents may call them.** A global rule in
+`~/.config/opencode/opencode.jsonc` denies `graph_*` to everyone:
+
+```jsonc
+{ "permissions": [{ "action": "graph_*", "resource": "*", "effect": "deny" }] }
+```
+
+The `graph-engineer` frontmatter re-allows them for itself. Agent rules are
+appended last, so the later `allow` wins. `install-agent.py` creates that global
+file if absent, and prints the rule to merge if you already have one, rather than
+clobbering your config. The tools also self-gate on the calling agent when the
+runtime reports it, as a belt-and-braces fallback.
 
 **How it finds the editor.** The bridge writes
 `~/.local/state/opencode-mermaid/bridge.json` on startup (plus a per-port
