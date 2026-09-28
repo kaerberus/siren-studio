@@ -55,7 +55,9 @@ open: `opencode service status`).
 ## Editor
 
 - **Split view** — CodeMirror editor with Mermaid syntax highlighting, bracket
-  matching and inline lint errors, next to a live Mermaid preview.
+  matching and inline lint errors, next to a live Mermaid preview. Both dividers
+  drag: editor↔preview, and preview↔Graph Engineer panel. `Ctrl+B` collapses the
+  panel.
 - **Viewer** — auto-centres and fits the graph on open; wheel to zoom, drag to
   pan, Fit to reset. Zoom/pan is done by driving the SVG `viewBox`, so it stays
   vector-crisp at any magnification. Full-screen present mode, export to
@@ -73,9 +75,17 @@ open: `opencode service status`).
   direction to flip.
   It is a *view*: the file is untouched, the header shows *transposed to fit*,
   and you can uncheck it to see the graph as authored. Exports follow what is on
-  screen. It re-decides when the pane is resized or the splitter is dragged.
+  screen. It re-decides when the pane is resized or either splitter is dragged.
 - **Selection sync** — hover a node in the preview and its source lines light up;
-  click an outline entry to jump to its definition; click a node to jump to it.
+  click an outline entry to jump to its definition; click an ordinary node to
+  jump to it in the editor.
+- **Cross-file links** — a node whose label names a diagram file becomes a link.
+  `Sub[[see 03-payment.mmd]]` opens `03-payment.mmd` in a tab when clicked, and
+  gets a dotted underline and a pointer cursor so it is visible before you hover.
+  Keep the extension: `Sub[see 03-payment]` is an ordinary node. The file has to
+  exist too — a reference to one that is not there stays unlinked, so a diagram
+  the agent has not written yet does not look clickable. A bare filename resolves
+  anywhere in the diagrams directory, preferring a sibling of the open diagram.
 - **Panels** — Files, Outline (nodes + subgraphs), and **Gaps**, which renders
   the diagram's `*.gaps.md` design-gap ledger.
 - **Tabs, autosave, live reload** — when the agent rewrites a file the editor
@@ -92,7 +102,7 @@ open: `opencode service status`).
 | `Ctrl+N` | New diagram |
 | `Ctrl+B` | Toggle Graph Engineer panel |
 | `Ctrl+1` | Toggle the files sidebar |
-| `Ctrl+Enter` | Send a chat message |
+| `Ctrl+Enter` | Send a chat message, or steer a running one |
 
 ## The Graph Engineer agent
 
@@ -107,11 +117,16 @@ consistent visual vocabulary → validate → **gap analysis** → present gaps 
 questions with recommended defaults. It keeps a `*.gaps.md` ledger beside each
 diagram and cites `path:line` for claims about real code.
 
+One concern per graph: when a flowchart starts answering two questions the agent
+splits it into `NN-topic.mmd` and leaves a reference node behind in the parent —
+which is what the cross-file links above are for. `graph_validate` nudges it past
+~25 nodes and flags a reference whose file does not exist.
+
 It is pinned to `deepseek/deepseek-flash` via the `model:` field in its
 frontmatter; remove that line to let it inherit whatever OpenCode is set to.
 The editor's model picker can override it per session.
 
-### Permissions: graphs only, and no shell
+### Permissions: diagrams only, and no shell or prompt tool
 
 `graph-engineer` can write diagrams and nothing else. In its frontmatter:
 
@@ -130,6 +145,10 @@ permissions:
     resource: "*"
     effect: deny            # shell has full filesystem authority; denying
                             # `edit` alone would be theatre
+  - action: question
+    resource: "*"
+    effect: deny            # the editor has no picker for it, so a turn that
+                            # calls it would block forever
 ```
 
 Why **by extension, not by directory?** Because the editor's workspace is usually
@@ -143,6 +162,12 @@ after global rules and the last match wins, which is why the `allow` beats the
 `deny`. If you keep diagrams in `.md` files, add a rule for that extension
 yourself — `*.md` is deliberately not allowed, since it would also permit editing
 `README.md` and `AGENTS.md`.
+
+`question` is an OpenCode built-in that blocks until you answer a
+multiple-choice picker. The editor has no picker, so a turn that calls it waits
+on an answer that can never arrive — the tool is denied per-agent rather than
+globally, so the TUI keeps it. The prose "open questions with a default" list is
+the replacement, and it is what the agent would have produced anyway.
 
 This is guardrails, not a sandbox. It stops the agent *accidentally* changing
 your code. It is not a jail against a hostile agent.
@@ -172,9 +197,17 @@ new one on every page load. **New session** in the panel header starts a fresh
 conversation (titled after the open diagram); the status line shows the model
 and a short session id so you can tell them apart.
 
-**Stuck turns are visible.** A turn that produces no output for 45s is reported
-with a *"No output from `<model>` yet — Retry / Stop"* bar instead of spinning
-forever, and a reply that completes with no content says so and offers Retry.
+**Steering.** Send stays enabled while a turn runs: sending mid-turn steers it.
+While the model is working the composer says so — the placeholder reads
+*"Model is running — send a message to steer it…"* — which matters most when the
+agent has asked you something, because your next message is the answer.
+
+**Stuck turns are visible.** A turn where *nothing* changes for 45s — no text, no
+reasoning, no tool activity — is reported with a
+*"No output from `<model>` yet — Retry / Stop"* bar instead of spinning forever.
+Thinking and running tools count as progress, so a long turn is not called stuck
+while it is working, and a tool that is waiting on you is not either. A reply that
+completes with nothing visible says so and offers Retry.
 
 ### The skill
 
@@ -210,7 +243,7 @@ It writes two things:
 | file | when it loads | contents |
 | --- | --- | --- |
 | `<root>/AGENTS.md` | before the agent starts | a few lines: read the diagram before implementing a flow, never edit `graphs/`, say so when code diverges, and a pointer to the nested file |
-| `<root>/graphs/AGENTS.md` | when an agent first reads a file in `graphs/` | the diagram conventions — naming, ledger pairing, size limits |
+| `<root>/graphs/AGENTS.md` | when an agent first reads a file in `graphs/` | the diagram conventions — naming, ledger pairing, the split rule, and what makes a reference into a link |
 
 That split is the closest thing to conditionality the mechanism offers. You
 cannot branch on *which agent* is running — the root file is injected into every
@@ -260,6 +293,7 @@ opencode-mermaid/
 │  ├─ global-permissions.json   graph_* denied to every agent by default
 │  ├─ skills/graph-engineering/
 │  └─ plugins/graph-tools.js
+├─ tests/                   dev suites (Node + jsdom; see tests/README.md)
 └─ docs/architecture.md
 ```
 
@@ -328,14 +362,50 @@ also asks it over SSE to parse with Mermaid itself and that verdict wins — so
 the agent gets a real answer, with line numbers, without the bridge needing a
 JavaScript runtime.
 
+It also reports what the source alone cannot show. These are **warnings, never
+errors** — a diagram can be perfectly valid and still get one:
+
+- **a reference that goes nowhere** — a node label naming a `*.mmd` that does not
+  exist would be a dead link in the editor, which the agent cannot see from
+  inside its own reasoning;
+- **the size advisory** — past ~25 nodes or 5 subgraphs, a nudge to consider
+  splitting instead of growing;
+- **a missing ledger** — a diagram with no sibling `*.gaps.md`, checked when
+  validating by path;
+- **a `click` directive naming a diagram** — Mermaid's own `click` is not what
+  makes a link here, so the warning names the form that does.
+
 > **Loading the plugin for the first time requires `opencode service restart`.**
-> OpenCode re-reads agents and skills on reload, but local plugin files are
-> cached in the running process. After that one restart, subsequent edits are
-> picked up normally.
+> Local plugin files are cached in the running process; after that one restart,
+> subsequent edits are picked up normally.
+>
+> **Changing what an agent is *allowed to do* also needs a restart.** OpenCode
+> re-reads an agent's prompt every turn, so editing the prose in
+> `graph-engineer.md` takes effect immediately — but its permissions and tool
+> list are snapshotted when the service starts. Add or remove a rule and restart,
+> or the running service keeps serving the old tool surface.
+
+## Tests
+
+```sh
+tests/bootstrap.sh    # once: fetch Node + jsdom if you don't already have them
+tests/run.sh
+```
+
+Seven suites, ~220 checks. `run.sh` starts its own bridge on port 8788 against a
+throwaway workspace, so your live editor and your real project are never touched.
+They cover the editor (boot, tabs, preview, outline, the gap panel, chat
+rendering, cross-file links, both splitters, the model palette), the viewer's
+transposition decision across pane shapes, SVG/PNG export against real Mermaid
+output, project setup and awareness wiring, the plugin's bridge API, a live agent
+round-trip, and the permission model end to end. See `tests/README.md`.
 
 ## Status / roadmap
 
 Implemented: everything above, including the plugin.
 
-Ideas not built: per-tab viewport memory, a diagram diff/checkpoint, and
-`graph_render` (server-side PNG via a headless renderer).
+Ideas not built: a **child viewport** — showing a referenced diagram beside its
+parent rather than in a tab, for which the clickable references were the cheap way
+to find out whether it earns the refactor — plus per-tab viewport memory, a
+diagram diff/checkpoint, and `graph_render` (server-side PNG via a headless
+renderer).

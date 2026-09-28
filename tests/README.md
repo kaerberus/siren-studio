@@ -27,7 +27,7 @@ running (`opencode service status`); they spawn their own throwaway
 | `project-setup.py` | project/diagrams-directory detection guards, awareness wiring, idempotent re-run, unwire |
 | `plugin-bridge.py` | the plugin's bridge API: validation round-trip, focus delivery, the size advisory |
 | `chat-e2e.mjs` | a live agent round-trip through the app's own `agent.js` |
-| `permissions-e2e.py` | graph-engineer may write diagrams and ledgers only, has no shell, and is the only agent that can see the graph tools |
+| `permissions-e2e.py` | graph-engineer may write diagrams and ledgers only, has no shell and no prompt tool, and is the only agent that can see the graph tools |
 
 ## Notes
 

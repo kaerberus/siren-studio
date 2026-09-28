@@ -3,8 +3,8 @@
 Written 2026-09-28 to survive a context compaction. Read `README.md` and
 `docs/architecture.md` first; this file only holds what they don't.
 
-**Status: everything is done except 9 (the README pass).** Also outstanding: the
-child viewport deferred under item 6.
+**Status: the list is done.** The only outstanding piece is the child viewport
+deferred under item 6.
 
 ## Running it
 
@@ -35,7 +35,7 @@ python3 start.py --project ~/code/some-project
 Now in `tests/`. `tests/bootstrap.sh` fetches Node + jsdom into `tests/.node`
 and `tests/node_modules` (both gitignored); `tests/run.sh` starts an isolated
 bridge on port 8788 against `/tmp/opencode/mermaid-tests/workspace`, runs all
-seven suites (175 checks), and tears the bridge down.
+seven suites (222 checks), and tears the bridge down.
 
 Paths are derived from `import.meta.url` / `__file__`, and the bridge URL,
 workspace and ports come from `TEST_PORT`, `TEST_WORKSPACE`, `TEST_BASE`,
@@ -265,22 +265,26 @@ and `graph-engineer.md`.
 
 Projects need the awareness wire-up re-run to pick up the new block.
 
-### 9. README pass — TODO
+### 9. ~~README pass~~ — DONE
 
-The README describes the editor for a human and has drifted. Known gaps, to be
-confirmed by reading it rather than patching from this list:
+Read through and corrected in place, rather than patching from the list above:
 
-- `## Editor` still says "click a node to jump to it". Clicking a node that names
-  a diagram now **opens that file**; jumping to source is the fallback.
-- The `Sub[[see 03-payment.mmd]]` idiom appears without explanation of what makes
-  it a link, or that a reference to a missing file is dead.
-- Nothing about the agent-panel splitter, or that Send steers a running turn
-  (the composer hint says "Ctrl+Enter to steer", but the README doesn't mention
-  steering at all).
-- `README.md:331` says "OpenCode re-reads agents and skills on reload". Mostly
-  true, but agent **permissions** need a service restart — see the note in
-  "Running it" in `docs/TODO.md`.
-- `tests/` has its own README but nothing in the main README points at it.
+- `## Editor` — clicking a node that names a diagram **opens that file**; jumping
+  to source is the fallback. New **Cross-file links** bullet covering what makes a
+  link: the extension, an existing file, a node label, basename resolution.
+- The **agent-panel divider** is documented, and `Ctrl+Enter` now reads "or steer
+  a running one", with a **Steering** paragraph.
+- **Stuck turns** describes the real semantics: *nothing* changed for 45s.
+  Thinking and running tools count as progress.
+- **Permissions** — the `question` deny and why; the section heading no longer
+  implies "no shell" is the whole story.
+- **Validation round-trip** — the warnings, not just the parse verdict.
+- The restart caveat now covers **agent permissions**, not only plugin files.
+- New **## Tests** section; `tests/` added to the layout tree.
+- Roadmap names the deferred child viewport.
+
+`tests/README.md` gained the prompt-tool note, and item 1's check count was stale
+(175 → 222).
 
 ### 10. ~~Hide `question` from the graph engineer; advertise steering~~ — DONE
 
