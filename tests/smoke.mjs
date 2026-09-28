@@ -56,6 +56,9 @@ if (window.Range) {
 if (window.Element && !window.Element.prototype.getClientRects) {
   window.Element.prototype.getClientRects = () => emptyRectList;
 }
+// jsdom has no pointer capture; the splitters call it on pointerdown.
+window.Element.prototype.setPointerCapture = function setPointerCapture() {};
+window.Element.prototype.releasePointerCapture = function releasePointerCapture() {};
 
 const realFetch = globalThis.fetch;
 let fakeNoAgent = false; // test hook: pretend the service has no graph-engineer
@@ -252,6 +255,52 @@ try {
 } catch (err) {
   check('viewer behaviour block', false, err.message);
 }
+
+// agent-panel splitter: the panel is a grid column, so the drag rewrites
+// --agent-w. jsdom does no layout, so the body rect is stubbed.
+try {
+  const agentSplitter = document.getElementById('agent-splitter');
+  check('agent splitter exists', Boolean(agentSplitter));
+  const bodyEl = document.querySelector('.body');
+  const agentW = () => document.documentElement.style.getPropertyValue('--agent-w');
+  const pointer = (type, clientX) => {
+    const event = new window.MouseEvent(type, { bubbles: true, clientX });
+    event.pointerId = 1;
+    return event;
+  };
+  // A whole drag: pointerdown captures the rect, so each case re-presses.
+  const drag = (width, clientX) => {
+    bodyEl.getBoundingClientRect = () => ({
+      left: 0, right: width, top: 0, bottom: 600, width, height: 600, x: 0, y: 0,
+    });
+    agentSplitter.dispatchEvent(pointer('pointerdown', width));
+    agentSplitter.dispatchEvent(pointer('pointermove', clientX));
+    const value = agentW();
+    agentSplitter.dispatchEvent(pointer('pointerup', clientX));
+    return value;
+  };
+
+  const app = document.getElementById('app');
+  bodyEl.getBoundingClientRect = () => ({
+    left: 0, right: 1000, top: 0, bottom: 600, width: 1000, height: 600, x: 0, y: 0,
+  });
+  agentSplitter.dispatchEvent(pointer('pointerdown', 640));
+  check('a drag marks the splitter and suppresses the column transition',
+    agentSplitter.classList.contains('dragging') && app.classList.contains('resizing'));
+  agentSplitter.dispatchEvent(pointer('pointerup', 640));
+  check('ending the drag clears the resizing state',
+    !agentSplitter.classList.contains('dragging') && !app.classList.contains('resizing'));
+
+  const tracked = drag(1000, 640);
+  check('the drag tracks the pointer', tracked === '360px', tracked);
+  const capped = drag(2000, 1000);
+  check('the panel has an absolute maximum', capped === '720px', capped);
+  const floored = drag(800, 100);
+  check('the workbench keeps a floor', floored === '380px', floored);
+  const minimum = drag(800, 790);
+  check('the panel has a minimum', minimum === '280px', minimum);
+  delete bodyEl.getBoundingClientRect;
+} catch (err) { check('agent splitter block', false, err.message); }
 
 // simulate a user edit (origin +input, which is what typing produces)
 const cm = studio?.editor?.cm;

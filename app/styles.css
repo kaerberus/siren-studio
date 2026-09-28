@@ -13,6 +13,7 @@
   --sidebar-w: 250px;
   --agent-w: 370px;
   --editor-w: 50%;
+  --splitter-w: 5px;
   --accent: #7c9cff;
   --accent-strong: #5c82f5;
   --ok: #3fb950;
@@ -80,15 +81,21 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 }
 .body {
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--agent-w);
+  grid-template-columns:
+    var(--sidebar-w) minmax(0, 1fr) var(--splitter-w) var(--agent-w);
   min-height: 0;
   transition: grid-template-columns 0.18s ease;
 }
-.app.sidebar-hidden .body { grid-template-columns: 0 minmax(0, 1fr) var(--agent-w); }
-.app.agent-hidden .body { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) 0; }
-.app.sidebar-hidden.agent-hidden .body { grid-template-columns: 0 minmax(0, 1fr) 0; }
+.app.sidebar-hidden .body {
+  grid-template-columns: 0 minmax(0, 1fr) var(--splitter-w) var(--agent-w);
+}
+.app.agent-hidden .body { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) 0 0; }
+.app.sidebar-hidden.agent-hidden .body { grid-template-columns: 0 minmax(0, 1fr) 0 0; }
+/* A splitter under the pointer must track it exactly, not ease into place. */
+.app.resizing .body { transition: none; }
 .app.sidebar-hidden .sidebar,
-.app.agent-hidden .agent-panel { overflow: hidden; border: none; opacity: 0; pointer-events: none; }
+.app.agent-hidden .agent-panel,
+.app.agent-hidden .agent-splitter { overflow: hidden; border: none; opacity: 0; pointer-events: none; }
 
 /* ── topbar ───────────────────────────────────────────────────────────── */
 .topbar {
@@ -288,9 +295,12 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 .editor-pane, .viewer-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .editor-pane { flex: 0 0 var(--editor-w); }
 .viewer-pane { flex: 1 1 auto; }
-.splitter { flex: 0 0 5px; cursor: col-resize; background: transparent; position: relative; }
-.splitter::after { content: ""; position: absolute; inset: 0 2px; border-radius: 3px; }
-.splitter:hover::after, .splitter.dragging::after { background: var(--accent); opacity: 0.5; }
+.splitter, .agent-splitter { cursor: col-resize; background: transparent; position: relative; }
+.splitter { flex: 0 0 var(--splitter-w); }
+.agent-splitter { min-width: 0; }
+.splitter::after, .agent-splitter::after { content: ""; position: absolute; inset: 0 2px; border-radius: 3px; }
+.splitter:hover::after, .splitter.dragging::after,
+.agent-splitter:hover::after, .agent-splitter.dragging::after { background: var(--accent); opacity: 0.5; }
 
 .pane-head {
   display: flex; align-items: center; gap: 6px;

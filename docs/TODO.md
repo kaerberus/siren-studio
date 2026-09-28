@@ -98,11 +98,23 @@ Checked in `smoke.mjs`: the header round-trips for both kinds and both fallbacks
 renders a collapsed `<details>` that names both files while the question stays
 outside the fold.
 
-### 4. Resizeable agent panel
+### 4. ~~Resizeable agent panel~~ — DONE
 
-`--agent-w` is fixed at 370px and the only splitter is editor↔viewer. Add a
-second drag handle before the agent panel, adjust `--agent-w` with min/max
-clamps, hide it when the panel is collapsed.
+`.body`'s grid is now four tracks — `sidebar | workbench | splitter | agent` —
+with `--splitter-w` shared by both handles, and an `.agent-splitter` between the
+workbench and the panel that rewrites `--agent-w`.
+
+Clamps: 280px minimum, 720px maximum, and never less than 420px left for the
+workbench. The third matters — on a small window the absolute maximum never
+binds and the workbench floor is what does, so all four regimes are tested
+(free, absolute max, workbench floor, minimum). `.app.resizing` drops the
+`grid-template-columns` transition during a drag so the divider tracks the
+pointer instead of easing toward it, and the handle goes `pointer-events: none`
+while `agent-hidden`, so a collapsed panel cannot be grabbed.
+
+Worth a look in a real browser: nothing is connected to the review pane, and
+jsdom does no layout, so the checks cover the drag arithmetic and the CSS
+parsing into the expected rules, not the rendered proportions.
 
 ### 5. Conventions wording + a size advisory
 

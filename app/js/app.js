@@ -1103,6 +1103,36 @@ function wireUI() {
     splitter.addEventListener('pointerup', up);
   });
 
+  // agent-panel splitter. The panel is a grid column, so the drag rewrites
+  // --agent-w, clamped so neither the panel nor the workbench becomes unusable.
+  const AGENT_MIN_W = 280;
+  const AGENT_MAX_W = 720;
+  const WORKBENCH_MIN_W = 420;
+  const agentSplitter = $('agent-splitter');
+  const bodyEl = agentSplitter.parentElement;
+  const appEl = $('app');
+  agentSplitter.addEventListener('pointerdown', (event) => {
+    agentSplitter.classList.add('dragging');
+    agentSplitter.setPointerCapture(event.pointerId);
+    const rect = bodyEl.getBoundingClientRect();
+    const max = Math.max(AGENT_MIN_W,
+      Math.min(AGENT_MAX_W, rect.width - WORKBENCH_MIN_W));
+    const move = (moveEvent) => {
+      const width = Math.max(AGENT_MIN_W, Math.min(max, rect.right - moveEvent.clientX));
+      document.documentElement.style.setProperty('--agent-w', `${width}px`);
+    };
+    const up = () => {
+      agentSplitter.classList.remove('dragging');
+      appEl.classList.remove('resizing');
+      agentSplitter.removeEventListener('pointermove', move);
+      agentSplitter.removeEventListener('pointerup', up);
+      scheduleRender(0); // the panes changed shape: re-evaluate smart view
+    };
+    appEl.classList.add('resizing');
+    agentSplitter.addEventListener('pointermove', move);
+    agentSplitter.addEventListener('pointerup', up);
+  });
+
   // chat
   $('composer').onsubmit = async (event) => {
     event.preventDefault();
