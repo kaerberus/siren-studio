@@ -61,7 +61,49 @@ the agent sees exactly what is on screen, including unsaved edits.
 | GET | `/api/events` | SSE: `ready`, `file-changed`, `file-created`, `file-deleted`, `workspace-changed`, `focus` |
 | POST | `/api/focus` | broadcast a focus request to the editor |
 | POST | `/api/open` | open a path in the OS file manager |
+| GET | `/api/fs/dirs?path=` | browse directories for the workspace picker |
+| POST | `/api/fs/mkdir` | create a folder |
+| POST | `/api/pick-directory` | the desktop's own folder chooser |
+| POST | `/api/validate` | structural lint, upgraded to a real Mermaid parse when an editor is connected |
+| POST | `/api/validate-result` | the editor's answer to a validate request |
 | * | `/oc/api/...` | reverse proxy to OpenCode (streams SSE) |
+
+## The plugin and the validation round-trip
+
+`agent/plugins/graph-tools.js` runs inside OpenCode and talks HTTP to the same
+bridge the editor uses.
+
+```
+agent → graph_validate ─┐
+                        ▼
+        bridge POST /api/validate
+          ├─ lint_mermaid(source)         ← always (Python, no JS needed)
+          └─ if an editor is subscribed:
+               Hub.publish("validate-request", {nonce, source})
+               … editor runs mermaid.parse …
+               editor POST /api/validate-result {nonce, ok, errors}
+               Validator.resolve(nonce) → the real verdict wins
+```
+
+The bridge owns no JavaScript runtime, so it borrows the browser's Mermaid for
+authoritative parsing and falls back to the structural linter when the editor is
+closed or slow (4s). `Validator` waits on a `threading.Event` keyed by a nonce;
+`ThreadingHTTPServer` keeps the rest of the bridge responsive meanwhile.
+
+The bridge also advertises itself for the plugin:
+
+- `~/.local/state/opencode-mermaid/bridge.json` — the primary pointer
+- `~/.local/state/opencode-mermaid/bridge-<port>.json` — every instance
+
+Only the default port (or a bridge replacing a dead owner) may claim the primary
+pointer, so a second bridge on another port cannot silently become the plugin's
+target. Discovery order in the plugin: `options.url` → `$MERMAID_STUDIO_URL` →
+primary pointer → `http://127.0.0.1:8777`.
+
+A local plugin file has no `node_modules`, so it must not import
+`@opencode/plugin`; OpenCode only requires the default export to be an object
+with an `id` and a `setup` (or `effect`) function. Local plugin files are cached
+in the running server, so the first load needs `opencode service restart`.
 
 ## Path safety
 

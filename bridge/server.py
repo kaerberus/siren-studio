@@ -25,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -44,6 +45,7 @@ IGNORED_DIRS = {
 GRAPH_EXTS = {".mmd", ".mermaid", ".md"}
 DEFAULT_AGENT = "graph-engineer"
 DEFAULT_MODEL = "deepseek/deepseek-flash"
+DEFAULT_PORT = 8777
 
 
 def parse_model_ref(spec: str | None) -> dict | None:
@@ -99,6 +101,145 @@ def discover_service() -> dict | None:
             "source": str(path),
         }
     return None
+
+
+DIAGRAM_KEYWORDS = {
+    "flowchart", "graph", "sequencediagram", "classdiagram", "classdiagram-v2",
+    "statediagram", "statediagram-v2", "erdiagram", "journey", "gantt", "pie",
+    "mindmap", "timeline", "gitgraph", "quadrantchart", "requirementdiagram",
+    "c4context", "c4container", "c4component", "c4dynamic", "block-beta",
+    "sankey-beta", "xychart-beta", "packet-beta", "architecture-beta", "zenuml",
+}
+RESERVED_IDS = {"end", "graph", "class", "classdef", "style", "click", "subgraph",
+                "linkstyle"}
+
+
+def lint_mermaid(source: str) -> dict:
+    """Cheap structural lint for Mermaid source.
+
+    Not a parser: it catches the mistakes that actually bite (missing diagram
+    keyword, unbalanced brackets, unclosed quotes, reserved ids, stray `end`).
+    The editor can upgrade this to a real `mermaid.parse` result.
+    """
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    lines = (source or "").split("\n")
+
+    def add(bucket, line, message):
+        bucket.append({"line": line, "message": message})
+
+    # 1. first meaningful line must name a diagram type
+    header_index = None
+    for index, raw in enumerate(lines):
+        text = raw.strip()
+        if not text or text.startswith("%%"):
+            continue
+        header_index = index
+        keyword = re.split(r"[\s{(\[]", text, maxsplit=1)[0].lower()
+        if keyword not in DIAGRAM_KEYWORDS:
+            add(errors, index + 1,
+                f"first line should name a diagram type (found {text[:40]!r})")
+        break
+
+    if header_index is None:
+        add(errors, 1, "diagram is empty")
+        return {"errors": errors, "warnings": warnings}
+
+    body = [ln for i, ln in enumerate(lines)
+            if i != header_index and ln.strip() and not ln.strip().startswith("%%")]
+    if not body:
+        add(errors, header_index + 1, "diagram has a type but no content")
+
+    # 2. balanced brackets, ignoring quoted spans. A quote never spans a line in
+    #    Mermaid, so an odd number of them on a line is an unclosed label.
+    pairs = {"]": "[", ")": "(", "}": "{"}
+    stack: list[tuple[str, int]] = []
+    for index, raw in enumerate(lines):
+        if raw.count('"') % 2 == 1:
+            add(errors, index + 1, "unclosed double quote")
+        unquoted = []
+        in_quote = False
+        for ch in raw:
+            if ch == '"':
+                in_quote = not in_quote
+                continue
+            if not in_quote:
+                unquoted.append(ch)
+        for ch in unquoted:
+            if ch in "[({":
+                stack.append((ch, index + 1))
+            elif ch in "])}":
+                if not stack or stack[-1][0] != pairs[ch]:
+                    add(errors, index + 1, f"unexpected {ch!r}")
+                else:
+                    stack.pop()
+    for opener, line in stack:
+        add(errors, line, f"unclosed {opener!r}")
+
+    # 3. reserved words used as node ids, and stray `end`
+    subgraphs = 0
+    ends = 0
+    reserved = "|".join(sorted(RESERVED_IDS))
+    for index, raw in enumerate(lines):
+        text = raw.strip()
+        if not text or text.startswith("%%"):
+            continue
+        # Mermaid keywords are lowercase, so `End` or `Class` are legal ids.
+        if re.match(r"^subgraph\b", text):
+            subgraphs += 1
+        elif re.match(r"^end\b", text):
+            ends += 1
+        for match in re.finditer(rf"(?:^|[\s|>])({reserved})\s*[\[\(\{{]", text):
+            add(warnings, index + 1,
+                f"{match.group(1)!r} is a reserved word used as a node id")
+
+    if subgraphs != ends:
+        add(warnings, header_index + 1,
+            f"{subgraphs} subgraph(s) but {ends} end(s)")
+
+    # 4. unquoted special characters inside a label
+    for index, raw in enumerate(lines):
+        if raw.strip().startswith("%%"):
+            continue
+        for match in re.finditer(r"\[([^\"]*?)\]", raw):
+            label = match.group(1)
+            if any(ch in label for ch in ";#%"):
+                add(warnings, index + 1,
+                    "label contains ; # or % without quotes")
+                break
+
+    return {"errors": errors, "warnings": warnings}
+
+
+def state_dir() -> Path:
+    state = os.environ.get("XDG_STATE_HOME")
+    if state:
+        return Path(state) / "opencode-mermaid"
+    return Path.home() / ".local" / "state" / "opencode-mermaid"
+
+
+def registration_path(port: int | None = None) -> Path:
+    """`bridge.json` is the primary pointer; `bridge-<port>.json` is per instance."""
+    return state_dir() / (f"bridge-{port}.json" if port else "bridge.json")
+
+
+def pid_alive(pid) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def read_json_file(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
 
 
 def detect_native_picker() -> str | None:
@@ -203,6 +344,48 @@ class Hub:
                 q.put_nowait(payload)
             except queue.Full:
                 pass
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._subs)
+
+
+class Validator:
+    """Ask a connected editor to validate source with the real Mermaid parser.
+
+    The bridge cannot parse Mermaid itself; the browser can. We publish a
+    request over SSE and wait (briefly) for the editor to post the result back.
+    """
+
+    def __init__(self, hub: Hub) -> None:
+        self.hub = hub
+        self._lock = threading.Lock()
+        self._pending: dict[str, dict] = {}
+
+    def available(self) -> bool:
+        return self.hub.count() > 0
+
+    def request(self, source: str, timeout: float = 4.0) -> dict | None:
+        if not self.available():
+            return None
+        nonce = uuid.uuid4().hex
+        box = {"event": threading.Event(), "result": None}
+        with self._lock:
+            self._pending[nonce] = box
+        self.hub.publish("validate-request", {"nonce": nonce, "source": source})
+        got = box["event"].wait(timeout)
+        with self._lock:
+            self._pending.pop(nonce, None)
+        return box["result"] if got else None
+
+    def resolve(self, nonce: str, result: dict) -> bool:
+        with self._lock:
+            box = self._pending.get(nonce)
+        if not box:
+            return False
+        box["result"] = result
+        box["event"].set()
+        return True
 
 
 # --------------------------------------------------------------------------- #
@@ -440,6 +623,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._handle_mkdir()
             if path == "/api/pick-directory" and method == "POST":
                 return self._handle_pick_directory()
+            if path == "/api/validate" and method == "POST":
+                return self._handle_validate()
+            if path == "/api/validate-result" and method == "POST":
+                return self._handle_validate_result()
             if path == "/api/workspace" and method == "POST":
                 return self._handle_set_workspace()
             if path == "/api/events" and method == "GET":
@@ -465,17 +652,23 @@ class Handler(BaseHTTPRequestHandler):
         ok, ver = self.oc.health()
         agents: list[dict] = []
         if ok:
-            try:
-                listing = self.oc.json("GET", "/api/agent", timeout=8)
-                for agent in (listing or {}).get("data", []):
-                    agents.append({
-                        "id": agent.get("id"),
-                        "name": agent.get("name"),
-                        "mode": agent.get("mode"),
-                        "hidden": agent.get("hidden", False),
-                    })
-            except Exception:  # noqa: BLE001
-                agents = []
+            # A busy OpenCode can take a while to answer; retry once rather than
+            # reporting "no agents" and hiding the Graph Engineer.
+            for attempt in range(2):
+                try:
+                    listing = self.oc.json("GET", "/api/agent", timeout=20)
+                    for agent in (listing or {}).get("data", []):
+                        agents.append({
+                            "id": agent.get("id"),
+                            "name": agent.get("name"),
+                            "mode": agent.get("mode"),
+                            "hidden": agent.get("hidden", False),
+                        })
+                    break
+                except Exception:  # noqa: BLE001
+                    agents = []
+                    if attempt == 0:
+                        time.sleep(0.4)
         self._json({
             "version": VERSION,
             "workspace": str(self.workspace.root),
@@ -553,6 +746,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(400, f"not a directory: {target}")
         self.workspace.set_root(target)
         self.server.watcher._rebaseline()  # type: ignore[attr-defined]
+        write_registration(self.server, str(target))
         self.hub.publish("workspace-changed", {"root": str(target)})
         self._json({"workspace": str(target)})
 
@@ -634,10 +828,48 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(400, f"not a directory: {target}")
         self._json({"path": str(target)})
 
+    def _handle_validate(self) -> None:
+        """Structural lint always; the editor's real parser when it is open."""
+        payload = self._read_json()
+        source = payload.get("source")
+        path = payload.get("path")
+        if source is None and path:
+            try:
+                source = self.workspace.resolve(path, must_exist=True).read_text("utf-8")
+            except (OSError, ValueError) as exc:
+                return self._error(400, f"cannot read {path}: {exc}")
+        source = source or ""
+        structural = lint_mermaid(source)
+        result = {
+            "ok": not structural["errors"],
+            "checked_by": "structural",
+            "errors": structural["errors"],
+            "warnings": structural["warnings"],
+        }
+        real = getattr(self.server, "validator", None)
+        if real is not None:
+            answer = real.request(source)
+            if answer is not None:
+                result["ok"] = bool(answer.get("ok"))
+                result["checked_by"] = "mermaid"
+                result["errors"] = answer.get("errors", [])
+                if structural["warnings"]:
+                    result["warnings"] = structural["warnings"]
+        self._json(result)
+
+    def _handle_validate_result(self) -> None:
+        payload = self._read_json()
+        validator = getattr(self.server, "validator", None)
+        accepted = bool(validator and validator.resolve(
+            payload.get("nonce", ""),
+            {"ok": bool(payload.get("ok")), "errors": payload.get("errors", [])},
+        ))
+        self._json({"accepted": accepted})
+
     def _handle_focus(self) -> None:
         payload = self._read_json()
         self.hub.publish("focus", {"path": payload.get("path", "")})
-        self._json({"ok": True})
+        self._json({"ok": True, "delivered": self.hub.count()})
 
     def _handle_open(self) -> None:
         """Open a path in the OS file manager (used by the UI)."""
@@ -777,6 +1009,7 @@ class BridgeServer(ThreadingHTTPServer):
         self.default_workspace = default_workspace
         self.default_model = default_model
         self.native_picker = detect_native_picker()
+        self.validator = Validator(hub)
         self.watcher = Watcher(workspace, hub)
 
 
@@ -804,10 +1037,54 @@ def find_free_port(host: str, preferred: int) -> int:
     raise RuntimeError("no free port found")
 
 
+def write_registration(server, workspace: str | None = None) -> None:
+    """Publish where this bridge is listening so the OpenCode plugin can find it.
+
+    Several bridges can run at once (a second one on another port, a test
+    instance, …). Each always records itself as ``bridge-<port>.json``, but only
+    claims the primary ``bridge.json`` if it is the default port or the current
+    owner is gone — otherwise a scratch instance would silently hijack the
+    plugin's target.
+    """
+    host, port = server.server_address[0], server.server_address[1]
+    payload = {
+        "url": f"http://{host}:{port}",
+        "host": host,
+        "port": port,
+        "pid": os.getpid(),
+        "version": VERSION,
+        "workspace": workspace or str(server.workspace.root),
+        "started": time.time(),
+    }
+    try:
+        state_dir().mkdir(parents=True, exist_ok=True)
+        registration_path(port).write_text(json.dumps(payload, indent=1))
+        primary = registration_path()
+        owner = read_json_file(primary)
+        may_claim = (port == DEFAULT_PORT or not owner
+                     or not pid_alive(owner.get("pid")))
+        if may_claim:
+            primary.write_text(json.dumps(payload, indent=1))
+    except OSError:
+        pass
+
+
+def clear_registration(port: int | None = None) -> None:
+    for path in (registration_path(port), registration_path()):
+        if path is None:
+            continue
+        data = read_json_file(path)
+        if data.get("pid") == os.getpid():
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="opencode-mermaid local bridge")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8777)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--workspace", default=None,
                         help="workspace directory (default: ./graphs or cwd)")
     parser.add_argument("--oc-url", default=None, help="OpenCode server URL override")
@@ -827,6 +1104,7 @@ def main() -> int:
     port = find_free_port(args.host, args.port)
     server = build_server(args.host, port, workspace_dir, args.oc_url, args.model)
     server.watcher.start()
+    write_registration(server)
 
     url = f"http://{args.host}:{port}/"
     oc_state = "connected" if server.oc.configured else "not discovered"
@@ -834,6 +1112,7 @@ def main() -> int:
     print(f"  editor    {url}")
     print(f"  workspace {workspace_dir}")
     print(f"  opencode  {oc_state} ({server.oc.url or 'n/a'})")
+    print(f"  plugin    {registration_path()}")
     print("  press Ctrl+C to stop")
 
     if not args.no_browser:
@@ -845,6 +1124,7 @@ def main() -> int:
         print("\nstopping")
     finally:
         server.watcher.stop()
+        clear_registration(port)
         server.shutdown()
     return 0
 

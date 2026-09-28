@@ -5,7 +5,7 @@ import { createEditor } from './editor.js';
 import {
   initViewer, render as renderGraph, setTheme as setMermaidTheme, fit, zoom,
   exportSvg, exportPng, lintMermaid, highlightNode, clearHighlight,
-  setEmptyVisible, focusNode, resetView,
+  setEmptyVisible, focusNode, resetView, parseSource,
 } from './viewer.js';
 import { createAgent, extractAssistant, toolLabel } from './agent.js';
 
@@ -71,6 +71,7 @@ async function boot() {
       'file-deleted': onFileDeleted,
       'workspace-changed': (data) => { state.workspace = data.root; refreshTree(); },
       focus: (data) => { if (data.path) openFile(data.path); },
+      'validate-request': onValidateRequest,
     },
     (up) => { if (!up) setStatusMsg('bridge reconnecting…'); },
   );
@@ -655,6 +656,20 @@ async function reloadTab(tab, quiet = false) {
   } catch (err) {
     toast(`Reload failed: ${err.message}`, 'err');
   }
+}
+
+/** Answer the plugin's `graph_validate` with the real Mermaid parser. */
+async function onValidateRequest(data) {
+  if (!data?.nonce) return;
+  let result;
+  try {
+    result = await parseSource(data.source || '');
+  } catch (err) {
+    result = { ok: false, errors: [{ line: 1, message: String(err.message || err) }] };
+  }
+  try {
+    await bridge.validateResult(data.nonce, result);
+  } catch (_) { /* the bridge will time out and fall back to structural lint */ }
 }
 
 function onFileDeleted(data) {

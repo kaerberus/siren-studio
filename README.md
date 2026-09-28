@@ -147,7 +147,10 @@ opencode-mermaid/
 │  ├─ js/  app.js editor.js viewer.js agent.js bridge.js
 │  └─ vendor/               mermaid 11 + CodeMirror 5 (offline)
 ├─ graphs/                  default workspace (examples)
-├─ agent/                   agent + skill sources
+├─ agent/                   agent, skill and plugin sources
+│  ├─ graph-engineer.md
+│  ├─ skills/graph-engineering/
+│  └─ plugins/graph-tools.js
 └─ docs/architecture.md
 ```
 
@@ -164,12 +167,43 @@ opencode-mermaid/
 - **Binds to `127.0.0.1` only.** It is a single-user local tool: any local
   process that can reach the port can read and write the workspace.
 
+## OpenCode plugin: `graph_*` tools
+
+`agent/plugins/graph-tools.js` is installed alongside the agent and gives it a
+typed handle on the workspace the editor is showing:
+
+| tool | what it does |
+| --- | --- |
+| `graph_list` | list diagrams with size, mtime and whether each has a gap ledger |
+| `graph_read` | read a diagram **and** its `.gaps.md` ledger |
+| `graph_write` | write diagram source and/or the ledger; the editor reloads live |
+| `graph_validate` | structural lint always, upgraded to the **real Mermaid parser** when the editor is open |
+| `graph_focus` | ask the editor to open a diagram and bring it forward |
+
+In Code Mode they appear as `tools.graph.list(...)` and friends.
+
+**How it finds the editor.** The bridge writes
+`~/.local/state/opencode-mermaid/bridge.json` on startup (plus a per-port
+`bridge-<port>.json`). The plugin reads the primary pointer; override with the
+`url` plugin option or `$MERMAID_STUDIO_URL`. If several bridges run, only the
+default port — or a bridge replacing a dead owner — claims the primary pointer,
+so a scratch instance cannot hijack it.
+
+**Validation round-trip.** `graph_validate` always runs the bridge's structural
+linter (missing diagram keyword, unbalanced brackets, unclosed quotes, reserved
+ids, stray `end`, unquoted `; # %`). When an editor is connected, the bridge
+also asks it over SSE to parse with Mermaid itself and that verdict wins — so
+the agent gets a real answer, with line numbers, without the bridge needing a
+JavaScript runtime.
+
+> **Loading the plugin for the first time requires `opencode service restart`.**
+> OpenCode re-reads agents and skills on reload, but local plugin files are
+> cached in the running process. After that one restart, subsequent edits are
+> picked up normally.
+
 ## Status / roadmap
 
-Implemented: everything above.
+Implemented: everything above, including the plugin.
 
-Phase 2 (not built yet): an OpenCode plugin
-(`.opencode/plugins/graph-tools.ts`) adding `graph_list`, `graph_read`,
-`graph_write`, `graph_validate` and `graph_focus` tools, so the agent can ask
-the editor to open a specific diagram and validate against the real Mermaid
-parser.
+Ideas not built: per-tab viewport memory, a diagram diff/checkpoint, and
+`graph_render` (server-side PNG via a headless renderer).

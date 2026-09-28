@@ -157,6 +157,26 @@ function cleanupStray(id) {
   }
 }
 
+/**
+ * Parse only, no rendering. Used to answer validation requests from the
+ * OpenCode plugin so the agent can check Mermaid with the real parser.
+ * @returns {Promise<{ok:boolean, errors:Array<{line:number,message:string}>}>}
+ */
+export async function parseSource(source) {
+  const text = (source || '').trim();
+  if (!text) return { ok: false, errors: [{ line: 1, message: 'diagram is empty' }] };
+  try {
+    await mermaid.parse(text);
+    return { ok: true, errors: [] };
+  } catch (err) {
+    const annotation = errorAnnotation(err);
+    return {
+      ok: false,
+      errors: [{ line: annotation.from.line + 1, message: annotation.message }],
+    };
+  }
+}
+
 /** Mermaid parse used by the editor linter. */
 export async function lintMermaid(text) {
   if (!text || !text.trim()) return [];

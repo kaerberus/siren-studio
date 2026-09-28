@@ -19,6 +19,8 @@ ITEMS = [
     (REPO / "agent" / "graph-engineer.md", CONFIG / "agents" / "graph-engineer.md"),
     (REPO / "agent" / "skills" / "graph-engineering",
      CONFIG / "skills" / "graph-engineering"),
+    (REPO / "agent" / "plugins" / "graph-tools.js",
+     CONFIG / "plugins" / "graph-tools.js"),
 ]
 
 
