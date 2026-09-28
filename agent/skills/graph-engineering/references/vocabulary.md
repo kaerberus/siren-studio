@@ -16,6 +16,17 @@ who learns the vocabulary once can read every graph you produce.
 | Parallelogram | `A[/Text/]` | Input or output |
 | Circle | `A((Text))` | Connector / junction |
 
+A `[[subroutine]]` whose label names a diagram file is a **link**: the editor
+opens that file when the node is clicked, so it is how a graph-of-graphs is
+navigated.
+
+- Keep the extension: `Sub[[see 03-payment.mmd]]` links, `Sub[see 03-payment]`
+  is an ordinary node.
+- The file has to exist; `graph_validate` warns about a reference that goes
+  nowhere.
+- A node label is the only place a reference counts — not a comment, not an
+  edge label.
+
 ## classDef palette
 
 ```mermaid

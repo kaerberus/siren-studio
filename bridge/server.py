@@ -123,6 +123,15 @@ SKIP_LINE_RE = re.compile(r"^(?:%%|classDef\b|class\s|style\s|click\s|linkStyle\
                           re.IGNORECASE)
 SIZE_WARN_NODES = 25
 SIZE_WARN_SUBGRAPHS = 5
+# A node *label*: id, shape opener, label text, matching closer. Used to find
+# diagram references where the editor will actually turn them into links - a
+# node label, not a comment or an edge label.
+NODE_LABEL_RE = re.compile(
+    r"(?:^|[\s>|])[A-Za-z_][\w-]*\s*"
+    r"(?:\(\(|\[\[|\(\[|\[\(|\{\{|\[\/|\[\\|\[|\(|\{)\s*"
+    r"([^\]\)\}]*?)\s*"
+    r"(?:\)\)|\]\]|\}\}|\]\)|\[\/|\]\\|\]|\)|\})")
+DIAGRAM_REF_RE = re.compile(r"[A-Za-z0-9._/-]+\.(?:mmd|mermaid)\b", re.IGNORECASE)
 
 
 def lint_mermaid(source: str) -> dict:
@@ -240,6 +249,86 @@ def lint_mermaid(source: str) -> dict:
     return {"errors": errors, "warnings": warnings}
 
 
+# ── cross-file links ───────────────────────────────────────────────────────
+# An agent writes `Sub[[see 03-payment.mmd]]` from a convention, but whether that
+# becomes a link depends on the file existing - something it cannot see from
+# inside its own reasoning. So the lint measures it and hands back the answer.
+
+def diagram_references(source: str) -> list[str]:
+    """Diagram filenames named in node labels, in first-seen order."""
+    refs: list[str] = []
+    for raw in (source or "").split("\n"):
+        text = raw.strip()
+        if not text or text.startswith("%%") or SKIP_LINE_RE.match(text):
+            continue
+        for label in NODE_LABEL_RE.findall(raw):
+            for ref in DIAGRAM_REF_RE.findall(label.strip("[](){} \t\"'")):
+                if ref not in refs:
+                    refs.append(ref)
+    return refs
+
+
+def link_warnings(source: str, graphs_dir: Path) -> list[dict]:
+    """Warn about diagram references that would not link anywhere.
+
+    Mirrors the editor's resolution: an explicit relative path has to exist,
+    a bare filename has to match a diagram somewhere in the directory.
+    """
+    refs = diagram_references(source)
+    if not refs or not graphs_dir.is_dir():
+        return []
+    names: set[str] = set()
+    relatives: set[str] = set()
+    for entry in graphs_dir.rglob("*"):
+        if entry.is_file() and entry.suffix.lower() in (".mmd", ".mermaid"):
+            relatives.add(entry.relative_to(graphs_dir).as_posix())
+            names.add(entry.name.lower())
+    warnings: list[dict] = []
+    for ref in refs:
+        target = ref.replace("\\", "/")
+        found = target in relatives if "/" in target else Path(target).name.lower() in names
+        if not found:
+            warnings.append({
+                "line": 1,
+                "message": f"references {ref}, which does not exist - write it or fix the name",
+            })
+    return warnings
+
+
+def ledger_warning(path: Path) -> list[dict]:
+    """Every diagram has a sibling `.gaps.md` ledger."""
+    if path.suffix.lower() not in (".mmd", ".mermaid"):
+        return []
+    ledger = path.with_name(path.name[: -len(path.suffix)] + ".gaps.md")
+    if ledger.is_file():
+        return []
+    return [{"line": 1, "message": f"has no gap ledger - expected a sibling {ledger.name}"}]
+
+
+CLICK_LINE_RE = re.compile(r"^\s*click\s", re.IGNORECASE)
+
+
+def click_warnings(source: str) -> list[dict]:
+    """A `click` directive naming a diagram is an attempted link that will not work.
+
+    Observed in the wild before the convention was written down: the agent had no
+    way to know the editor links from a node label, so it reached for Mermaid's
+    own `click`. The editor ignores that directive, so saying nothing here would
+    let it believe the link worked.
+    """
+    warnings: list[dict] = []
+    for index, raw in enumerate((source or "").split("\n")):
+        if not CLICK_LINE_RE.match(raw):
+            continue
+        for ref in DIAGRAM_REF_RE.findall(raw):
+            warnings.append({
+                "line": index + 1,
+                "message": (f"`click` does not make a link in the editor - name the diagram "
+                            f"in a node label instead, e.g. `Sub[[see {ref}]]`"),
+            })
+    return warnings
+
+
 def state_dir() -> Path:
     state = os.environ.get("XDG_STATE_HOME")
     if state:
@@ -285,6 +374,34 @@ def conventions_block() -> str:
         "  from the parent as `Sub[[see 03-payment.mmd]]`.",
         "- Prefer splitting over growing. A diagram that has to be panned or zoomed to",
         "  read has stopped being a review tool.",
+        "",
+        "## References between diagrams",
+        "",
+        "A node whose **label** names a diagram file is a link: clicking it opens that",
+        "file. Two things have to be true, and neither is checkable by eye:",
+        "",
+        "- the label contains a token ending in `.mmd` or `.mermaid`, **extension included**",
+        "  (`Sub[see 03-payment]` is an ordinary node; `Sub[[see 03-payment.mmd]]` is a link);",
+        "- that file exists. A reference to a file that is not there goes nowhere, and",
+        "  `graph_validate` warns about it.",
+        "",
+        "The name counts only in a node label - not in a comment, an edge label, or a",
+        "`click` directive. A bare filename is resolved against this directory; a path",
+        "like `sub/03-payment.mmd` is resolved as written.",
+        "",
+        "## Splitting a diagram",
+        "",
+        "Split when the graph answers more than one question, or when `graph_validate`",
+        "reports the size advisory. A split touches several files, so propose it before",
+        "you do it, and then:",
+        "",
+        "1. Choose a free `NN` - read the directory rather than guessing a number.",
+        "2. Write `NN-topic.mmd` with the extracted subflow, and `NN-topic.gaps.md`",
+        "   beside it: every diagram has a ledger, and `graph_validate` says so.",
+        "3. Validate the new file too, not just the parent.",
+        "4. Replace the moved detail in the parent with one referencing node. Do not",
+        "   keep both, or you have duplicated the graph you just split.",
+        "5. Record the decision in the parent's ledger under `## Decisions`.",
     ] + [MARKER_END])
 
 
@@ -1155,18 +1272,27 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._read_json()
         source = payload.get("source")
         path = payload.get("path")
+        resolved = None
         if source is None and path:
             try:
-                source = self.workspace.resolve(path, must_exist=True).read_text("utf-8")
+                resolved = self.workspace.resolve(path, must_exist=True)
+                source = resolved.read_text("utf-8")
             except (OSError, ValueError) as exc:
                 return self._error(400, f"cannot read {path}: {exc}")
         source = source or ""
         structural = lint_mermaid(source)
+        # Cross-file checks need the directory, so they live out here rather than
+        # in the pure lint. They hold whichever parser ends up answering.
+        warnings = list(structural["warnings"])
+        warnings += link_warnings(source, self.workspace.graphs_dir)
+        warnings += click_warnings(source)
+        if resolved is not None:
+            warnings += ledger_warning(resolved)
         result = {
             "ok": not structural["errors"],
             "checked_by": "structural",
             "errors": structural["errors"],
-            "warnings": structural["warnings"],
+            "warnings": warnings,
         }
         real = getattr(self.server, "validator", None)
         if real is not None:
@@ -1175,8 +1301,6 @@ class Handler(BaseHTTPRequestHandler):
                 result["ok"] = bool(answer.get("ok"))
                 result["checked_by"] = "mermaid"
                 result["errors"] = answer.get("errors", [])
-                if structural["warnings"]:
-                    result["warnings"] = structural["warnings"]
         self._json(result)
 
     def _handle_validate_result(self) -> None:

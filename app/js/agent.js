@@ -220,6 +220,7 @@ export function createAgent({
         active: true, done: false, isNewAssistant, lastCompleted,
         contentKey: key, lastKey: turn.lastKey, lastContentAt: turn.lastContentAt,
         now: Date.now(), stallMs, notifiedEmpty: turn.notifiedEmpty,
+        visible: hasVisibleOutput(last), running: hasRunningTool(last),
       });
       turn.lastContentAt = decision.lastContentAt;
       turn.lastKey = key;
@@ -374,25 +375,61 @@ export function splitPrompt(text) {
   };
 }
 
-/** Signature of an assistant message's output; null when it has produced none. */
+/**
+ * Signature of everything an assistant message has produced: visible text,
+ * streamed reasoning, and each tool's status and output length. Null only when
+ * the message carries nothing at all.
+ *
+ * Reasoning is included because it is progress the model is making even though
+ * the reader cannot see it yet. Using this as the stall timer's input is what
+ * stops a long think from looking like a hang.
+ */
 export function contentKey(message) {
   if (!message) return null;
   const parts = message.content || [];
-  const texts = parts.filter((p) => p.type === 'text').map((p) => p.text || '');
+  const text = parts.filter((p) => p.type === 'text').map((p) => p.text || '').join('');
+  const reasoning = parts.filter((p) => p.type === 'reasoning').map((p) => p.text || '').join('');
   const tools = parts.filter((p) => p.type === 'tool');
-  if (!texts.join('') && !tools.length) return null;
-  return `${texts.join('').length}:${tools.length}:${tools.map((t) => t.name).join(',')}`;
+  if (!text && !reasoning && !tools.length) return null;
+  const toolKey = tools.map((tool) => {
+    const state = tool.state || {};
+    const output = typeof state.output === 'string' ? state.output.length : 0;
+    return `${tool.name}:${state.status || ''}:${output}`;
+  }).join(',');
+  return `${text.length}:${reasoning.length}:${tools.length}:${toolKey}`;
+}
+
+/** Does the message hold anything the reader can actually see? */
+export function hasVisibleOutput(message) {
+  const parts = message?.content || [];
+  return parts.some((p) => (p.type === 'text' && Boolean(p.text)) || p.type === 'tool');
 }
 
 /**
- * Decide how an in-flight turn is progressing. A turn is only "empty" once it
- * has actually produced a reply and that reply carried no content — never just
- * because the assistant message has not appeared yet.
+ * Is a tool still in flight? A running tool is a wait, not a hang: the model may
+ * be mid-step, or it may have asked the user a question and be waiting on the
+ * answer. Either way the editor must not offer Retry/Stop for it.
+ */
+export function hasRunningTool(message) {
+  const parts = message?.content || [];
+  return parts.some((p) => p.type === 'tool' && p.state?.status === 'running');
+}
+
+/**
+ * Decide how an in-flight turn is progressing.
+ *
+ * `contentKey` drives the stall timer (any change at all is progress), while
+ * `visible` decides emptiness (reasoning-only output is still "no output"), and
+ * `running` suppresses the stall entirely while a tool is in flight. A turn is
+ * only "empty" once it has actually produced a reply and that reply carried
+ * nothing the reader can see — never just because the assistant message has not
+ * appeared yet.
  * @returns {{progressed:boolean,lastContentAt:number,done:boolean,busy:boolean,stalled:boolean,empty:boolean}}
  */
 export function turnDecision({
   active, done, isNewAssistant, lastCompleted,
   contentKey: key, lastKey, lastContentAt, now, stallMs, notifiedEmpty,
+  visible, running,
 }) {
   const progressed = key !== lastKey;
   const at = progressed ? now : lastContentAt;
@@ -409,8 +446,8 @@ export function turnDecision({
     lastContentAt: at,
     done: finished,
     busy,
-    stalled: Boolean(busy && now - at > stallMs),
-    empty: Boolean(finished && !key && !notifiedEmpty),
+    stalled: Boolean(busy && !running && now - at > stallMs),
+    empty: Boolean(finished && !visible && !notifiedEmpty),
   };
 }
 

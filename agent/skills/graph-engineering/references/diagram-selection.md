@@ -37,3 +37,21 @@ diagram a reader has to pan or zoom to follow has stopped being a review tool.
 
 `graph_validate` reports a size advisory past roughly 25 nodes or 5 subgraphs.
 Treat it as a prompt to consider splitting, not as an error, and not as a hard cap.
+
+### What the reference has to look like
+
+The editor turns a node label that names a diagram file into a link, so:
+
+- keep the extension: `Sub[[see 03-payment.mmd]]` links, `Sub[see 03-payment]` does not;
+- the file has to exist. `graph_validate` warns about a reference that goes nowhere,
+  because that is not something you can see from inside your own reasoning;
+- it counts in a node label only — not in a comment, an edge label or a `click`
+  directive. A bare filename resolves anywhere in this directory; `sub/x.mmd` is
+  resolved as written.
+
+### A split is several files
+
+Propose it before doing it, then: pick a free `NN`; write the child `.mmd` *and*
+its `.gaps.md`; validate the child as well as the parent; replace the moved detail
+in the parent with one referencing node rather than keeping both; and record the
+decision in the parent's ledger under `## Decisions`.

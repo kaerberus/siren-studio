@@ -3,8 +3,8 @@
 Written 2026-09-28 to survive a context compaction. Read `README.md` and
 `docs/architecture.md` first; this file only holds what they don't.
 
-**Status: all six items are done.** The one deferred piece is the child viewport
-under item 6, which the clickable references were meant to justify.
+**Status: items 1–8 are done.** Outstanding: the README pass (9), and the child
+viewport deferred under item 6.
 
 ## Running it
 
@@ -207,6 +207,70 @@ whether it does.
 - **Discoverability:** a node is only clickable if its label resolves to a
   `.mmd`/`.mermaid` file in the diagrams directory — cursor + a small marker so
   it isn't hidden.
+
+### 7. ~~The stall notice fired on a wait, not a hang~~ — DONE
+
+The turn that stalled while probing item 2 ended with `tools=['question:running']`
+— the agent had asked *me* a question and was waiting on the answer. The editor
+watched the message sit still for 45s and offered Retry/Stop. Two causes, both
+fixed in `agent.js`:
+
+- `contentKey` counted only `text` parts and tool *names*, so streamed
+  **reasoning** — most of a long turn — was invisible to the timer. It now
+  covers text, reasoning, and each tool's status plus output length.
+- A tool in flight is a wait, not a hang, so `turnDecision` takes `running` and
+  never stalls while one is. Emptiness moved to its own signal (`visible`): a
+  reasoning-only completion still reads as "no output", because the reader saw
+  nothing.
+
+The notice copy is unchanged ("No output from X yet"); with the fix it means what
+it says. The threshold stays 45s, which now means "the session went quiet".
+
+Related, in `app.js`: **Send is no longer disabled while a turn runs.** Sending
+mid-turn steers it (`delivery: 'steer'`), and an agent waiting on a question would
+otherwise be unanswerable by click. The hint switches to "Ctrl+Enter to steer",
+and Stop is the affordance for a busy turn.
+
+### 8. ~~Tell the agent how links and splits actually work~~ — DONE
+
+It knew the rule (split by concern) and one syntax example, and nothing about the
+mechanism or the obligations.
+
+**Tooling — the half that matters.** `graph_validate` now resolves the diagram
+references in a source's node labels against the diagrams directory and warns
+about any that go nowhere, plus a missing sibling `.gaps.md` when validating by
+path. It mirrors the editor: an explicit relative path must exist, a bare
+filename matches anywhere in the directory. Detection is label-only, so a `.mmd`
+name in a comment, an edge label or a `classDef` is ignored — the editor would
+not link it either, and saying otherwise would teach the wrong thing.
+
+A `click` directive naming a diagram gets its own message, because that is the
+mistake actually observed: an agent that had not been told the convention wrote
+`click Handoff "graphs/02-render-pipeline.mmd"` and recorded "which convention
+does the editor use" as an open question in the ledger. Staying silent there
+would have let it believe the link worked, so the warning names the fix
+(`Sub[[see x.mmd]]`).
+
+**Prose.** `conventions_block()` gained "References between diagrams" and
+"Splitting a diagram": the link contract, and the five things a split owes (a
+free `NN`; the child's own `.gaps.md`; validating the child; replacing the moved
+detail rather than duplicating it; recording the decision). Mirrored in
+`diagram-selection.md`, `vocabulary.md` (the `[[ ]]` shape now says it is a link)
+and `graph-engineer.md`.
+
+Projects need the awareness wire-up re-run to pick up the new block.
+
+### 9. README pass — TODO
+
+The README describes the editor for a human and has drifted. Known gaps, to be
+confirmed by reading it rather than patching from this list:
+
+- `## Editor` still says "click a node to jump to it". Clicking a node that names
+  a diagram now **opens that file**; jumping to source is the fallback.
+- The `Sub[[see 03-payment.mmd]]` idiom appears without explanation of what makes
+  it a link, or that a reference to a missing file is dead.
+- Nothing about the agent-panel splitter, or that Send steers a running turn.
+- `tests/` has its own README but nothing in the main README points at it.
 
 ## Notes that are easy to forget
 

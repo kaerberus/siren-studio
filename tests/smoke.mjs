@@ -484,22 +484,51 @@ try {
   check('in-flight with no output is stalled', stalled.stalled === true && stalled.done === false);
 
   // output arrived -> progress resets the timer
-  const fresh = a.turnDecision({ ...base, isNewAssistant: true, contentKey: '9:0:', lastKey: null, lastContentAt: now - 50000, now });
+  const fresh = a.turnDecision({ ...base, isNewAssistant: true, contentKey: '9:0:0:', lastKey: null, lastContentAt: now - 50000, now, visible: true, running: false });
   check('new output resets the stall timer', fresh.stalled === false && fresh.progressed === true && fresh.lastContentAt === now);
 
   // completed reply with content -> done, not empty
-  const finished = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: '9:0:', lastKey: '9:0:', lastContentAt: now - 5000, now });
+  const finished = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: '9:0:0:', lastKey: '9:0:0:', lastContentAt: now - 5000, now, visible: true, running: false });
   check('completed reply ends the turn and is not empty',
     finished.done === true && finished.busy === false && finished.empty === false);
 
   // completed reply with no content -> empty
-  const empty = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: null, lastKey: null, lastContentAt: now, now });
+  const empty = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: null, lastKey: null, lastContentAt: now, now, visible: false, running: false });
   check('completed-with-no-output is reported empty', empty.empty === true && empty.done === true);
-  const once = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: null, lastKey: null, lastContentAt: now, now, notifiedEmpty: true });
+  const once = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: null, lastKey: null, lastContentAt: now, now, notifiedEmpty: true, visible: false, running: false });
   check('empty is only reported once', once.empty === false);
 
+  // a tool in flight is a wait, not a hang. This is exactly what the agent's
+  // own `question` tool looks like while it waits for the user to answer.
+  const waitingOnTool = a.turnDecision({
+    ...base, isNewAssistant: true,
+    contentKey: '0:0:1:question:running:0', lastKey: '0:0:1:question:running:0',
+    lastContentAt: now - 120000, now, visible: true, running: true,
+  });
+  check('a running tool is a wait, not a stall',
+    waitingOnTool.stalled === false && waitingOnTool.busy === true, JSON.stringify(waitingOnTool));
+
+  // streamed reasoning is progress the reader cannot see yet: it has to hold the
+  // stall timer without counting as visible output
+  check('reasoning counts as progress',
+    a.contentKey({ content: [{ type: 'reasoning', text: 'hmm' }] }) === '0:3:0:',
+    a.contentKey({ content: [{ type: 'reasoning', text: 'hmm' }] }));
+  check('tool status and output count as progress',
+    a.contentKey({ content: [{ type: 'tool', name: 'read', state: { status: 'running', output: 'ab' } }] })
+      === '0:0:1:read:running:2');
   check('contentKey ignores empty messages', a.contentKey({ content: [{ type: 'reasoning', text: '' }] }) === null);
-  check('contentKey detects text', a.contentKey({ content: [{ type: 'text', text: 'hi' }] }) === '2:0:');
+  check('contentKey detects text', a.contentKey({ content: [{ type: 'text', text: 'hi' }] }) === '2:0:0:',
+    a.contentKey({ content: [{ type: 'text', text: 'hi' }] }));
+
+  check('visible output ignores reasoning',
+    a.hasVisibleOutput({ content: [{ type: 'reasoning', text: 'x' }] }) === false
+      && a.hasVisibleOutput({ content: [{ type: 'text', text: 'x' }] }) === true
+      && a.hasVisibleOutput({ content: [{ type: 'tool', name: 'read' }] }) === true);
+  check('a reasoning-only completion is still "no output"',
+    a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: '0:20:0:', lastKey: null, lastContentAt: now, now, visible: false, running: false }).empty === true);
+  check('hasRunningTool spots an in-flight tool',
+    a.hasRunningTool({ content: [{ type: 'tool', name: 'read', state: { status: 'running' } }] }) === true
+      && a.hasRunningTool({ content: [{ type: 'tool', name: 'read', state: { status: 'completed' } }] }) === false);
 
   // the header buildPrompt writes is the one the transcript parser recognises,
   // including the "untitled" / "none" fallbacks

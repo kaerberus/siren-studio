@@ -245,8 +245,12 @@ async function startAgent(model) {
     logEl: $('chat-log'),
     onStatus: (text) => { $('agent-sub').textContent = text; },
     onBusy: (busy) => {
-      $('chat-send').disabled = busy;
+      // Sending mid-turn steers the run (`delivery: 'steer'`), and the agent may
+      // be waiting on an answer to a question it asked. So Send stays available
+      // and Stop is the affordance for a busy turn; disabling Send would trap
+      // the user mid-question.
       $('chat-stop').hidden = !busy;
+      $('composer-hint').textContent = busy ? 'Ctrl+Enter to steer' : 'Ctrl+Enter to send';
       document.querySelector('.agent-orb')?.classList.toggle('busy', busy);
     },
     onMessages: renderChat,

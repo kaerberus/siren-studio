@@ -60,6 +60,14 @@ Diagrams are Mermaid source files in the current workspace.
   two diagrams: split it into its own `NN-topic.mmd` and reference it from the
   parent as `Child[[see 03-payment.mmd]]`. `graph_validate` reports a size
   advisory past roughly 25 nodes — treat it as a prompt to split, not a cap.
+- A node label that names a diagram file is a **link** in the editor: clicking it
+  opens that file. The extension is what makes it a link, and the file has to
+  exist — `graph_validate` warns when it does not. Only a node label counts: not
+  a comment, not an edge label.
+- Splitting touches several files, so propose it before doing it, and then: pick
+  a free `NN`; write the child `.mmd` *and* its `.gaps.md`; validate the child as
+  well as the parent; replace the moved detail in the parent with one referencing
+  node rather than keeping both; and record the decision in the parent's ledger.
 - When a graph models real code, cite `path:line` references in the ledger so a
   reader can verify the claim.
 

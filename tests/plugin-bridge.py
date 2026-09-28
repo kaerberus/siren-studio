@@ -8,6 +8,7 @@ import json
 import threading
 import os
 import time
+import urllib.parse
 import urllib.request
 
 BASE = os.environ.get("TEST_BASE", "http://127.0.0.1:8788")
@@ -54,6 +55,22 @@ def get(route):
     with urllib.request.urlopen(BASE + route, timeout=15) as response:
         raw = response.read()
     return json.loads(raw) if raw else None
+
+
+def put_file(path, content):
+    request = urllib.request.Request(
+        BASE + "/api/fs/file",
+        data=json.dumps({"path": path, "content": content}).encode(),
+        method="PUT", headers={"content-type": "application/json"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        response.read()
+
+
+def delete_file(path):
+    request = urllib.request.Request(
+        BASE + "/api/fs/file?path=" + urllib.parse.quote(path), method="DELETE")
+    with urllib.request.urlopen(request, timeout=15) as response:
+        response.read()
 
 
 # use whatever diagram the bridge actually has, so this suite is independent of
@@ -118,6 +135,66 @@ check("size advisory stays a warning, not an error", big_result["ok"] is True)
 check("size advisory is silent for a small graph",
       not [w for w in small_result["warnings"] if "splitting" in w["message"]],
       json.dumps(small_result["warnings"]))
+
+# 8. cross-file links: a reference to a file that is not there is a dead end,
+#    and the agent cannot see the directory from inside its own reasoning.
+existing = _real.rsplit("/", 1)[-1]
+link_ok = post("/api/validate",
+               {"source": f"flowchart TD\n    A --> Sub[[see {existing}]]\n"})
+check("a reference to an existing diagram is not flagged",
+      not [w for w in link_ok["warnings"] if "does not exist" in w["message"]],
+      json.dumps(link_ok["warnings"]))
+
+link_dead = post("/api/validate",
+                 {"source": "flowchart TD\n    A --> Sub[[see 99-missing.mmd]]\n"})
+dead = [w["message"] for w in link_dead["warnings"] if "does not exist" in w["message"]]
+check("a reference to a missing diagram is flagged", bool(dead), dead[:1])
+check("a dead reference is only a warning", link_dead["ok"] is True)
+
+# the reference has to be in a node label: not a comment, not an edge label
+ignored = post("/api/validate", {"source": "flowchart TD\n"
+                                          "    %% see 99-missing.mmd\n"
+                                          "    A -->|see 98-missing.mmd| B\n"})
+check("a reference outside a node label is not treated as a link",
+      not [w for w in ignored["warnings"] if "does not exist" in w["message"]],
+      json.dumps(ignored["warnings"]))
+
+# a `click` directive is an attempted link that will not work. Seen in the wild:
+# an agent that had not been told the convention reached for Mermaid's own click.
+clicked = post("/api/validate", {"source": "flowchart TD\n"
+                                           "    A --> B\n"
+                                           '    click B "other.mmd" "Open other"\n'})
+click_messages = [w["message"] for w in clicked["warnings"]]
+check("a `click` directive naming a diagram is flagged",
+      any("`click` does not make a link" in m for m in click_messages),
+      json.dumps(click_messages))
+check("the `click` warning says what to write instead",
+      any("Sub[[see other.mmd]]" in m for m in click_messages),
+      json.dumps(click_messages))
+
+# by path: the reference AND the missing sibling ledger are both reported
+put_file("__probe-dead.mmd", "flowchart TD\n    A --> Sub[[see 97-missing.mmd]]\n")
+try:
+    by_path = post("/api/validate", {"path": "__probe-dead.mmd"})
+    by_path_messages = [w["message"] for w in by_path["warnings"]]
+    check("validating by path still flags the dead reference",
+          any("does not exist" in m for m in by_path_messages), json.dumps(by_path_messages))
+    check("validating by path flags the missing gap ledger",
+          any("gap ledger" in m for m in by_path_messages), json.dumps(by_path_messages))
+finally:
+    delete_file("__probe-dead.mmd")
+
+put_file("__probe-ok.mmd", f"flowchart TD\n    A --> Sub[[see {existing}]]\n")
+put_file("__probe-ok.gaps.md", "# probe - design gaps\n\n## Open questions\n- none\n")
+try:
+    clean = post("/api/validate", {"path": "__probe-ok.mmd"})
+    clean_messages = [w["message"] for w in clean["warnings"]]
+    check("a diagram with a live reference and a ledger is clean",
+          not any("does not exist" in m or "gap ledger" in m for m in clean_messages),
+          json.dumps(clean_messages))
+finally:
+    delete_file("__probe-ok.mmd")
+    delete_file("__probe-ok.gaps.md")
 
 failed = 0
 for ok, name, extra in results:
