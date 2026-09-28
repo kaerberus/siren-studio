@@ -326,8 +326,18 @@ opencode-mermaid/
 - **Project memory** — the chosen diagrams directory per project is kept in
   `~/.local/state/opencode-mermaid/projects.json`, because a directory that is
   still empty cannot be detected by looking at its contents.
-- **Binds to `127.0.0.1` only.** It is a single-user local tool: any local
-  process that can reach the port can read and write the workspace.
+- **Binds to `127.0.0.1` only — that is load-bearing, not just a default.** The
+  bridge has no authentication of its own, and two things sit behind the port:
+
+  - `/api/fs/*` reads and writes anything under the workspace;
+  - `/oc/*` proxies to OpenCode **with your credentials attached**, so whatever
+    can reach the port can drive your agent as you.
+
+  So any local process that reaches the port gets both, and exposing the port
+  turns that into a remote filesystem-and-agent hole rather than a mere privacy
+  leak. Keep it on loopback: do not bind to `0.0.0.0`, port-forward it, or put it
+  behind a reverse proxy. To use it from another machine, tunnel the connection
+  (`ssh -L 8777:127.0.0.1:8777 host`) instead of listening publicly.
 
 ## OpenCode plugin: two tools
 
