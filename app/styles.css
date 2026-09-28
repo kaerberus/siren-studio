@@ -149,7 +149,11 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   font-size: 12px;
 }
 .mini-btn:hover { background: var(--bg-hover); color: var(--text); }
+.mini-btn:disabled { opacity: 0.5; cursor: default; }
+.mini-btn:disabled:hover { background: none; color: var(--text-dim); }
 .mini-btn svg { width: 14px; height: 14px; }
+.mini-btn.spinning svg { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .mini-btn.labeled { padding: 0 9px; border-color: var(--border); font-size: 11.5px; white-space: nowrap; }
 .mini-btn.labeled:hover { border-color: var(--accent); color: var(--accent); }
 

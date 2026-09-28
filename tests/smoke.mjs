@@ -183,6 +183,34 @@ check('gaps panel renders the ledger',
   /Open questions/.test(document.querySelector('#gaps-list').textContent),
   document.querySelector('#gaps-list').textContent.slice(0, 40));
 
+// the folder you are actually on is named in three places — the launcher can
+// reopen any project, so this is what stops "wait, which one is this?"
+try {
+  const projectName = state?.config?.projectName;
+  const head = document.querySelector('#files-root');
+  check('the file-tree head names the project',
+    Boolean(projectName) && head.textContent.includes(projectName),
+    `${head.textContent} vs ${projectName}`);
+  check('the file-tree head carries the absolute path as a tooltip',
+    head.title === state.config.graphsPath,
+    `${head.title} vs ${state.config.graphsPath}`);
+  check('the browser tab names the project',
+    document.title.startsWith(projectName) && /Mermaid Studio/.test(document.title),
+    document.title);
+  check('the rescan button is named for what it does',
+    document.querySelector('#btn-refresh').title === 'Rescan folder',
+    document.querySelector('#btn-refresh').title);
+
+  const seen = () => document.querySelectorAll('#toasts .toast').length;
+  const before = seen();
+  document.querySelector('#btn-refresh').click();
+  await waitFor('rescan toast', () => seen() > before);
+  const said = document.querySelector('#toasts .toast')?.textContent || '';
+  check('rescan reports what it did', /Rescanned/.test(said), said);
+  check('rescan leaves the tree rendered',
+    document.querySelectorAll('#file-tree .tree-item').length > 0);
+} catch (err) { check('workspace labels block', false, err.message); }
+
 // viewer: sizing + viewBox-driven fit/zoom (mermaid emits width="100%", viewBox)
 try {
   const v = await import('file://' + path.join(APP, 'js', 'viewer.js'));

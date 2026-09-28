@@ -41,13 +41,22 @@ python3 install-agent.py
 # 2. start the editor (opens your browser)
 python3 start.py
 
-# point it at a project instead of this checkout
+# open a specific project
 python3 start.py --project ~/code/my-project
+
+# ignore the last project and open this checkout
+python3 start.py --checkout
 ```
 
 The editor opens on a **project root**, and diagrams live in a directory inside
 it (default `graphs/`). The project root is the OpenCode session Location, so
 diagram paths read as `graphs/03-payment.mmd` for you and for the agent.
+
+With no arguments, `start.py` reopens **the last project you used** and falls back
+to this checkout the first time (or if that project is gone). It names the project
+it picked, and where it got it from, in the startup banner; `--checkout` forces
+this repo. The project name is also echoed in the topbar, the file-tree head and
+the browser tab, so which folder you are on is never a guess.
 
 Requires the OpenCode service to be running (it normally is while OpenCode is
 open: `opencode service status`).
@@ -90,6 +99,12 @@ open: `opencode service status`).
   the diagram's `*.gaps.md` design-gap ledger.
 - **Tabs, autosave, live reload** — when the agent rewrites a file the editor
   picks it up; if you have unsaved edits you get a reload / keep-mine choice.
+- **Rescan folder** — the circular-arrow button next to the file-tree head
+  re-reads the tree, every clean buffer, and the open diagram's ledger, then
+  says what changed. Dirty buffers are left alone. It deliberately does *not*
+  switch project — that is *Open project…* at the foot of the sidebar. The head
+  itself names the folder you are on (`project/graphs`), with the absolute path
+  on hover.
 - **Templates** — flowchart, error paths, state machine, sequence, codebase map,
   data model.
 - **Dark and light** themes.
@@ -392,13 +407,14 @@ tests/bootstrap.sh    # once: fetch Node + jsdom if you don't already have them
 tests/run.sh
 ```
 
-Seven suites, ~220 checks. `run.sh` starts its own bridge on port 8788 against a
+Seven suites, ~240 checks. `run.sh` starts its own bridge on port 8788 against a
 throwaway workspace, so your live editor and your real project are never touched.
 They cover the editor (boot, tabs, preview, outline, the gap panel, chat
-rendering, cross-file links, both splitters, the model palette), the viewer's
-transposition decision across pane shapes, SVG/PNG export against real Mermaid
-output, project setup and awareness wiring, the plugin's bridge API, a live agent
-round-trip, and the permission model end to end. See `tests/README.md`.
+rendering, cross-file links, both splitters, the model palette, workspace labels
+and rescan), the viewer's transposition decision across pane shapes, SVG/PNG
+export against real Mermaid output, project setup, the launcher's project
+memory and awareness wiring, the plugin's bridge API, a live agent round-trip,
+and the permission model end to end. See `tests/README.md`.
 
 ## Status / roadmap
 

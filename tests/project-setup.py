@@ -150,6 +150,76 @@ check("tree paths live under the diagrams dir",
           or config["graphsDir"] == "." for p in paths),
       f'graphsDir={config["graphsDir"]} paths={paths[:3]}')
 
+# ── launcher memory: which project a bare `start.py` reopens ───────────────
+# In-process, because this is bridge state rather than bridge HTTP, and with
+# XDG_STATE_HOME redirected so the real one is never touched.
+import pathlib  # noqa: E402
+import sys  # noqa: E402
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bridge"))
+import server as bridge  # noqa: E402
+
+sandbox = pathlib.Path(tempfile.mkdtemp(prefix="mermaid-launcher-"))
+os.environ["XDG_STATE_HOME"] = str(sandbox / "state")
+(pathlib.Path(os.environ["XDG_STATE_HOME"]) / "opencode-mermaid").mkdir(parents=True)
+projects = bridge.projects_path()
+
+repo = pathlib.Path(__file__).resolve().parent.parent
+real_a, real_b = repo / "graphs", repo / "app"
+gone = sandbox / "was-deleted"                       # never created
+temp_proj = pathlib.Path(tempfile.mkdtemp(prefix="mermaid-throwaway-"))
+
+
+def write_projects(entries):
+    projects.write_text(json.dumps(entries))
+
+
+check("is_temp_path spots a throwaway workspace", bridge.is_temp_path(temp_proj))
+check("is_temp_path leaves a real project alone", not bridge.is_temp_path(real_a))
+check("no project is remembered yet", bridge.last_project() is None,
+      f"projects={projects}")
+
+# the launch decision itself, including the escape hatches
+check("with nothing remembered, a bare launch opens the checkout",
+      bridge.resolve_project(None, False)[0] == bridge.REPO_ROOT)
+check("--checkout forces the checkout",
+      bridge.resolve_project(None, True)[0] == bridge.REPO_ROOT)
+check("--project wins over the memory",
+      bridge.resolve_project(str(real_b), False)[0] == real_b)
+
+write_projects({str(real_a): {"graphsDir": "graphs", "at": 100}})
+check("the remembered project comes back", bridge.last_project() == str(real_a))
+check("a bare launch reopens the remembered project",
+      bridge.resolve_project(None, False)[0] == real_a)
+check("and says why in the banner", "last project" in bridge.resolve_project(None, False)[1],
+      bridge.resolve_project(None, False)[1])
+
+# The suites start bridges on throwaway workspaces; those must never win.
+write_projects({
+    str(temp_proj): {"graphsDir": ".", "at": 900},
+    str(gone): {"graphsDir": ".", "at": 800},
+    str(real_a): {"graphsDir": "graphs", "at": 100},
+})
+check("a temp project never becomes the default", bridge.last_project() == str(real_a),
+      bridge.last_project())
+
+write_projects({
+    str(real_a): {"graphsDir": "graphs", "at": 100},
+    str(real_b): {"graphsDir": ".", "at": 200},
+})
+check("the most recently active project wins", bridge.last_project() == str(real_b))
+
+write_projects({str(gone): {"graphsDir": ".", "at": 300}})
+check("a project that no longer exists is skipped", bridge.last_project() is None)
+
+write_projects({str(real_a): {"graphsDir": "graphs", "at": 100}})
+before = json.loads(projects.read_text())
+bridge.remember_project(real_a, "graphs")
+after = json.loads(projects.read_text())
+check("remember_project stamps the activity time",
+      after[str(real_a)]["at"] >= before[str(real_a)]["at"]
+      and after[str(real_a)]["graphsDir"] == "graphs")
+
 failed = 0
 for ok, name, extra in results:
     if not ok:

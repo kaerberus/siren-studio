@@ -23,6 +23,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -680,6 +681,9 @@ def remember_project(project: Path, graphs_rel: str) -> None:
     Detection alone cannot see a diagrams directory that is still empty, so a
     project set up before anything is drawn in it would otherwise be forgotten
     and get a fresh `graphs/` next time.
+
+    The `at` stamp is also what `last_project()` reads, so this runs whenever a
+    project becomes active: at startup, on a UI project switch, and on setup.
     """
     data = read_json_file(projects_path())
     data[str(project.resolve())] = {"graphsDir": graphs_rel, "at": time.time()}
@@ -688,6 +692,35 @@ def remember_project(project: Path, graphs_rel: str) -> None:
         projects_path().write_text(json.dumps(data, indent=1))
     except OSError:
         pass
+
+
+def is_temp_path(path: Path) -> bool:
+    try:
+        temp = Path(tempfile.gettempdir()).resolve()
+        resolved = path.resolve()
+    except OSError:
+        return False
+    return resolved == temp or temp in resolved.parents
+
+
+def last_project() -> str | None:
+    """The most recently active project, if it is still on disk.
+
+    Temp projects are ignored on purpose: the dev suites start bridges against
+    throwaway workspaces under /tmp, and one of those must never become the
+    folder the editor opens by default.
+    """
+    newest: tuple[float, str] | None = None
+    for raw, entry in read_json_file(projects_path()).items():
+        if not isinstance(entry, dict):
+            continue
+        path = Path(raw)
+        if is_temp_path(path) or not path.is_dir():
+            continue
+        stamp = entry.get("at") or 0
+        if newest is None or stamp > newest[0]:
+            newest = (stamp, raw)
+    return newest[1] if newest else None
 
 
 def detect_graphs_dir(root: Path, remembered: str | None = None) -> str:
@@ -1536,20 +1569,42 @@ def clear_registration(port: int | None = None) -> None:
                 pass
 
 
+def resolve_project(project: str | None, checkout: bool) -> tuple[Path, str]:
+    """Which project should this launch open, and why.
+
+    Explicit flags win. Otherwise reopen the last project you used, falling back
+    to this checkout the first time — or when that project is gone. The second
+    element is the reason, for the startup banner.
+    """
+    if checkout:
+        return REPO_ROOT, "this checkout (--checkout)"
+    if project:
+        return Path(project).expanduser().resolve(), "from --project"
+    remembered = last_project()
+    if remembered:
+        return Path(remembered), "last project opened (--checkout opens this repo)"
+    return REPO_ROOT, "this checkout (no project remembered yet)"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="opencode-mermaid local bridge")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--project", "--workspace", dest="project", default=None,
-                        help="project root holding your diagrams (default: this checkout)")
+    where = parser.add_mutually_exclusive_group()
+    where.add_argument("--project", "--workspace", dest="project", default=None,
+                       help="project root holding your diagrams")
+    where.add_argument("--checkout", action="store_true",
+                       help="open this checkout instead of the last project you used")
     parser.add_argument("--oc-url", default=None, help="OpenCode server URL override")
     parser.add_argument("--model", default=DEFAULT_MODEL,
                         help=f"default chat model as provider/model#variant (default: {DEFAULT_MODEL})")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
-    project_dir = (Path(args.project).expanduser().resolve()
-                   if args.project else REPO_ROOT)
+    # Reopen where you left off: defaulting to this checkout every launch
+    # silently swapped projects under the editor, which read as "the files I
+    # deleted are still there".
+    project_dir, origin = resolve_project(args.project, args.checkout)
     if not project_dir.is_dir():
         project_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1563,6 +1618,7 @@ def main() -> int:
     print(f"opencode-mermaid {VERSION}")
     print(f"  editor    {url}")
     print(f"  project   {project_dir}")
+    print(f"            {origin}")
     print(f"  diagrams  {server.workspace.graphs_path}")
     print(f"  opencode  {oc_state} ({server.oc.url or 'n/a'})")
     print(f"  plugin    {registration_path()}")

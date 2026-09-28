@@ -33,6 +33,21 @@ let saveTimer = null;
 let renderTimer = null;
 let outlineTimer = null;
 
+/**
+ * Name the project the editor is actually on — topbar, file-tree head and the
+ * browser tab. Nothing else says it, and "which folder am I on?" is the exact
+ * confusion this prevents: the launcher can open any project, so the folder is
+ * not always the one you last had in mind.
+ */
+function applyWorkspaceLabels() {
+  const name = state.config?.projectName || state.workspace || '';
+  $('workspace-label').textContent = name;
+  document.title = name ? `${name} — Mermaid Studio` : 'Mermaid Studio';
+  const root = $('files-root');
+  root.textContent = state.graphsDir === '.' ? `/${name}` : `${name}/${state.graphsDir}`;
+  root.title = state.config?.graphsPath || state.workspace || '';
+}
+
 // ── boot ───────────────────────────────────────────────────────────────────
 async function boot() {
   applyTheme(state.theme);
@@ -63,10 +78,7 @@ async function boot() {
   }
   state.workspace = state.config.project || state.config.workspace;
   state.graphsDir = state.config.graphsDir || '.';
-  $('workspace-label').textContent = state.config.projectName || state.workspace;
-  $('files-root').textContent = state.graphsDir === '.'
-    ? `/${state.config.projectName || ''}`
-    : `${state.config.projectName || ''}/${state.graphsDir}`;
+  applyWorkspaceLabels();
   $('status-mermaid').textContent = 'mermaid 11';
   updateOcStatus();
 
@@ -78,6 +90,16 @@ async function boot() {
       'workspace-changed': (data) => {
         state.workspace = data.root;
         if (data.graphsDir) state.graphsDir = data.graphsDir;
+        if (state.config) {
+          Object.assign(state.config, {
+            project: data.root,
+            workspace: data.root,
+            graphsDir: state.graphsDir,
+            projectName: data.root.split('/').filter(Boolean).pop() || '',
+            graphsPath: state.graphsDir === '.' ? data.root : `${data.root}/${state.graphsDir}`,
+          });
+        }
+        applyWorkspaceLabels();
         refreshTree();
         refreshAwarenessState();
       },
@@ -396,8 +418,10 @@ async function refreshTree() {
     const result = await bridge.tree();
     state.entries = result.entries || [];
     renderTree();
+    return true;
   } catch (err) {
     setStatusMsg(`tree: ${err.message}`);
+    return false;
   }
 }
 
@@ -842,22 +866,79 @@ function onFileChanged(data) {
 async function reloadTab(tab, quiet = false) {
   try {
     const data = await bridge.read(tab.path);
-    tab.content = data.content;
-    tab.mtime = data.mtime;
-    tab.dirty = false;
-    updateDirty();
-    renderTabs();
-    if (state.active === tab.key) {
-      const cursor = editor.cm.getCursor();
-      editor.setValue(data.content);
-      editor.cm.setCursor(cursor);
-      scheduleRender(0);
-      scheduleOutline(0);
-      loadLedger(tab);
-    }
+    applyDiskContent(tab, data);
     if (!quiet) setStatusMsg('reloaded from disk');
+    return true;
   } catch (err) {
     toast(`Reload failed: ${err.message}`, 'err');
+    return false;
+  }
+}
+
+/** Apply freshly read disk content to a tab, and to the editor when it is active. */
+function applyDiskContent(tab, data) {
+  tab.content = data.content;
+  tab.mtime = data.mtime;
+  tab.dirty = false;
+  updateDirty();
+  renderTabs();
+  if (state.active !== tab.key) return;
+  const cursor = editor.cm.getCursor();
+  editor.setValue(data.content);
+  editor.cm.setCursor(cursor);
+  scheduleRender(0);
+  scheduleOutline(0);
+  loadLedger(tab);
+}
+
+/**
+ * Re-read every clean tab from disk. Dirty tabs are left alone: an external
+ * write is not a reason to throw away your edits.
+ */
+async function rescanTabs() {
+  let changed = 0;
+  for (const tab of state.tabs) {
+    if (!tab.path || tab.dirty) continue;
+    let data;
+    try {
+      data = await bridge.read(tab.path);
+    } catch (_) {
+      continue; // gone — `file-deleted` owns that conversation
+    }
+    if (data.content === tab.content) continue;
+    applyDiskContent(tab, data);
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
+ * Rescan folder: re-read the tree, any clean buffers, and the ledger of the open
+ * diagram. It deliberately does NOT re-detect or switch the project — that is
+ * `Open project…`, and a rescan that quietly teleports you elsewhere is a trap.
+ */
+async function rescanFolder() {
+  const button = $('btn-refresh');
+  if (button.disabled) return;
+  button.disabled = true;
+  button.classList.add('spinning');
+  try {
+    if (!await refreshTree()) {
+      toast('Could not read the folder — see the status bar.', 'err');
+      return;
+    }
+    const changed = await rescanTabs();
+    const active = findTab(state.active);
+    if (active?.path) await loadLedger(active);
+    await refreshAwarenessState();
+    const files = state.entries.filter((entry) => entry.type === 'file').length;
+    const plural = (n) => `${n} file${n === 1 ? '' : 's'}`;
+    toast(changed ? `Rescanned — ${plural(changed)} changed`
+      : state.entries.length === 0 ? 'Rescanned — the folder is empty'
+        : `Rescanned — ${plural(files)}, nothing changed`, 'ok');
+  } finally {
+    button.disabled = false;
+    button.classList.remove('spinning');
   }
 }
 
@@ -1081,7 +1162,7 @@ function wireUI() {
     scheduleRender(0);
   };
 
-  $('btn-refresh').onclick = refreshTree;
+  $('btn-refresh').onclick = rescanFolder;
   $('btn-new-file').onclick = newFileModal;
   $('btn-new').onclick = () => openUntitled('flowchart TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[Do the thing]\n    B -->|no| D[Stop]\n');
   $('btn-save').onclick = () => saveActive();
@@ -1413,10 +1494,8 @@ async function useWorkspace(dir) {
     state.tabs = [];
     state.active = null;
     editor.setValue('');
-    $('workspace-label').textContent = result.projectName || state.workspace.split('/').pop();
-    $('files-root').textContent = state.graphsDir === '.'
-      ? `/${result.projectName || ''}`
-      : `${result.projectName || ''}/${state.graphsDir}`;
+    Object.assign(state.config, result);
+    applyWorkspaceLabels();
     await refreshTree();
     refreshAwarenessState();
     // Sessions are location-scoped, so start a fresh one for the new workspace.

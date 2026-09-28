@@ -10,8 +10,9 @@ deferred under item 6.
 
 ```sh
 python3 install-agent.py          # agent + skill + plugin into ~/.config/opencode
-python3 start.py                  # defaults to this checkout
+python3 start.py                  # reopens the last project you used
 python3 start.py --project ~/code/some-project
+python3 start.py --checkout       # force this repo instead
 ```
 
 - Editor: <http://127.0.0.1:8777/>. The bridge must be running; OpenCode must be
@@ -35,7 +36,7 @@ python3 start.py --project ~/code/some-project
 Now in `tests/`. `tests/bootstrap.sh` fetches Node + jsdom into `tests/.node`
 and `tests/node_modules` (both gitignored); `tests/run.sh` starts an isolated
 bridge on port 8788 against `/tmp/opencode/mermaid-tests/workspace`, runs all
-seven suites (222 checks), and tears the bridge down.
+seven suites (241 checks), and tears the bridge down.
 
 Paths are derived from `import.meta.url` / `__file__`, and the bridge URL,
 workspace and ports come from `TEST_PORT`, `TEST_WORKSPACE`, `TEST_BASE`,
@@ -305,6 +306,37 @@ Also: Send is no longer disabled while a turn runs, and the composer says so —
 placeholder *"Model is running — send a message to steer it…"*, hint
 *"Ctrl+Enter to steer"*. `composerCopy(busy, idlePlaceholder)` holds both states
 and is checked in smoke.
+
+### 11. ~~Rescan folder, and stop the launcher swapping projects under you~~ — DONE
+
+All three came out of the same confusion: wipe a project, reopen the editor, and
+get shown a *different* project's files.
+
+**The rescan button.** `#btn-refresh` was wired to `refreshTree()` with no
+feedback, so next to a path it read as "rescan or change this folder" while
+visibly doing neither. It is now *Rescan folder* and does a real resync: re-read
+the tree, every **clean** buffer (dirty ones are left alone), and the open
+diagram's ledger, then say what changed. It still deliberately does not switch
+project — that is `Open project…`, and a rescan that teleports you elsewhere
+would be the bug, not the fix.
+
+**Name the folder.** `applyWorkspaceLabels()` sets the topbar label, the
+file-tree head, the browser tab title, and the head's tooltip (absolute path).
+It runs at boot, on a UI project switch, and on `workspace-changed` — which
+previously updated no label at all.
+
+**Reopen where you left off.** A bare `start.py` used to hard-default to this
+checkout, so a restart silently moved the editor to a different project and its
+files looked like a wipe that had not taken. `resolve_project()` now reopens the
+last project from `projects.json`'s `at` stamp, falling back to the checkout.
+Guards: temp paths are never considered (the suites start bridges against
+throwaway workspaces and one must never become the default), a project that is
+gone is skipped, `--project` wins, and `--checkout` forces the repo. The banner
+prints which project it picked and why.
+
+**The one behaviour change:** a bare `python3 start.py` no longer guarantees this
+checkout. In steady use it reopens whatever you last had open — including the
+repo — and the banner always says which one.
 
 ## Notes that are easy to forget
 

@@ -5,8 +5,12 @@ Starts the local bridge (which serves the editor and proxies OpenCode) and
 opens it in your browser.
 
     python3 start.py
-    python3 start.py --workspace ~/code/my-project
+    python3 start.py --project ~/code/my-project
+    python3 start.py --checkout          # force this repo, ignoring the last one
     python3 start.py --workspace ~/code/my-project --port 8777 --no-browser
+
+With no `--project`, the editor reopens the last project you used, and falls back
+to this checkout the first time.
 """
 from __future__ import annotations
 
