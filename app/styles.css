@@ -152,7 +152,39 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   background: var(--bg-inset); border: 1px solid var(--border);
   font-size: 11.5px; color: var(--text-dim); white-space: nowrap;
 }
+button.pill { font-family: inherit; cursor: pointer; }
+button.pill:hover { border-color: var(--accent); color: var(--text); }
+.pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+
+/* model palette */
+.palette { width: min(560px, 92vw); padding: 12px; }
+.palette-input {
+  width: 100%; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-inset); border: 1px solid var(--border); color: var(--text);
+  font-family: inherit; font-size: 13px;
+}
+.palette-input:focus { outline: none; border-color: var(--accent); }
+.palette-list {
+  max-height: 340px; overflow: auto; margin-top: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-inset); padding: 4px;
+}
+.palette-group {
+  padding: 8px 9px 3px; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--text-faint);
+}
+.palette-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+  border-radius: 6px; cursor: pointer; font-size: 12.5px; color: var(--text-dim);
+}
+.palette-item:hover, .palette-item.active { background: var(--bg-hover); color: var(--text); }
+.palette-item .palette-check { visibility: hidden; color: var(--accent); flex: none; }
+.palette-item.selected .palette-check { visibility: visible; }
+.palette-item .palette-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-item .palette-cost { font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); flex: none; }
+.palette-empty { padding: 16px 12px; color: var(--text-faint); font-size: 12.5px; }
+.palette-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--text-faint); }
 .pill.online .dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.16); }
 .pill.offline .dot { background: var(--err); box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.16); }
 .pill.online { color: var(--text); }

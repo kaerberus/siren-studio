@@ -154,12 +154,18 @@ ledger", and ask. Quick prompts cover *Model codebase*, *Find gaps*, *Simplify*,
 and *Add error paths*. Mermaid blocks in its replies get an **Apply to editor**
 button.
 
-**Model picker.** The panel header shows which model is answering. It defaults
-to `deepseek/deepseek-flash` (set with `--model provider/model#variant`, default
-effort level) and lists every model OpenCode offers, grouped by provider, with
-effort variants. Your choice is remembered and applied to the session
-immediately. Free models on OpenCode Zen are intermittently flaky — if a turn
-produces nothing, see below.
+**Model picker.** The pill in the top bar — `● OpenCode 2.0.11 · DeepSeek V4.1
+Flash` — is a button. Clicking it opens a searchable palette of every model
+OpenCode is configured with, grouped by provider and including effort variants
+and a price hint (`free`, or `$in / $out` per million tokens). Type to filter,
+`↑↓` to move, `Enter` to pick. It works for anything OpenCode can reach, so a
+local Ollama endpoint shows up alongside cloud models.
+
+There is also a plain dropdown in the panel header for quick switching. Both are
+wired to one setter, so they cannot drift. The default is
+`deepseek/deepseek-flash` (`--model provider/model#variant`, default effort
+level) and your choice is remembered. Free models on OpenCode Zen are
+intermittently flaky — if a turn produces nothing, see below.
 
 **Sessions.** The editor reuses one session per workspace rather than creating a
 new one on every page load. **New session** in the panel header starts a fresh

@@ -22,6 +22,8 @@ const state = {
   active: null,
   untitledSeq: 0,
   theme: localStorage.getItem('ms-theme') || 'dark',
+  models: [],
+  modelKey: '',   // the model ref currently in effect, as "provider/id#variant"
   pendingBlocks: new Map(),
 };
 
@@ -89,6 +91,7 @@ async function boot() {
   refreshAwarenessState();
   const model = await loadModels();
   await startAgent(model);
+  updateOcStatus(); // the pill can only name the model once the agent has one
 
   // open the first graph found, if any
   const first = state.entries.find((e) => e.type === 'file' && e.graph && !e.name.endsWith('.gaps.md'));
@@ -103,13 +106,138 @@ function updateOcStatus() {
   el.classList.remove('online', 'offline');
   if (oc_.ok) {
     el.classList.add('online');
-    text.textContent = `OpenCode ${oc_.version || ''}`.trim();
-    el.title = `Connected to ${oc_.url}`;
+    const label = currentModelLabel();
+    text.textContent = `OpenCode ${oc_.version || ''} · ${label}`.replace(/\s+/g, ' ').trim();
+    el.title = `Connected to ${oc_.url}\nClick to change the Graph Engineer's model`;
   } else {
     el.classList.add('offline');
     text.textContent = 'OpenCode offline';
     el.title = oc_.configured ? 'Service not responding' : 'No service discovered';
   }
+}
+
+/** Every selectable model, flattened with its effort variants. */
+function modelEntries() {
+  const entries = [];
+  for (const model of state.models || []) {
+    const cost = (model.cost || [])[0] || null;
+    const base = { providerID: model.providerID, id: model.id };
+    entries.push({
+      ref: base, key: modelValue(base), provider: model.providerID,
+      label: model.name || model.id, cost,
+    });
+    for (const variant of model.variants || []) {
+      if (variant.id === 'default') continue;
+      const ref = { providerID: model.providerID, id: model.id, variant: variant.id };
+      entries.push({
+        ref, key: modelValue(ref), provider: model.providerID,
+        label: `${model.name || model.id} · ${variant.id}`, cost,
+      });
+    }
+  }
+  return entries;
+}
+
+/** Single writer for the model choice, so the pill and the panel cannot drift. */
+async function setModelRef(ref, { persist = true } = {}) {
+  const key = modelValue(ref);
+  if (persist) localStorage.setItem(MODEL_KEY, key);
+  applySelectValue($('agent-model'), key);
+  state.modelKey = key;
+  updateOcStatus();
+  if (agent) await agent.setModel(ref);
+}
+
+/** Searchable model palette, opened from the OpenCode pill. */
+function openModelPalette() {
+  const entries = modelEntries();
+  if (!entries.length) {
+    toast('OpenCode reported no models — check its provider configuration', 'warn');
+    return;
+  }
+  const current = localStorage.getItem(MODEL_KEY) || modelValue(agent?.model);
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal palette">
+      <input id="palette-input" class="palette-input" placeholder="Search models…"
+             spellcheck="false" autocomplete="off" aria-label="Search models" />
+      <div class="palette-list" id="palette-list"></div>
+      <div class="palette-foot">
+        <span id="palette-count"></span>
+        <span class="spacer"></span>
+        <span class="hint">↑↓ move · Enter pick · Esc close</span>
+      </div>
+    </div>`;
+  const listEl = backdrop.querySelector('#palette-list');
+  const inputEl = backdrop.querySelector('#palette-input');
+  const countEl = backdrop.querySelector('#palette-count');
+  const close = () => backdrop.remove();
+  let matches = entries;
+  let active = Math.max(0, matches.findIndex((e) => e.key === current));
+
+  function render() {
+    listEl.innerHTML = '';
+    if (!matches.length) {
+      listEl.innerHTML = '<div class="palette-empty">No model matches that search.</div>';
+      countEl.textContent = '';
+      return;
+    }
+    countEl.textContent = `${matches.length} of ${entries.length}`;
+    let lastProvider = null;
+    matches.forEach((entry, index) => {
+      if (entry.provider !== lastProvider) {
+        lastProvider = entry.provider;
+        const heading = document.createElement('div');
+        heading.className = 'palette-group';
+        heading.textContent = entry.provider;
+        listEl.appendChild(heading);
+      }
+      const row = document.createElement('div');
+      row.className = `palette-item${index === active ? ' active' : ''}`
+        + `${entry.key === current ? ' selected' : ''}`;
+      const paid = entry.cost && (entry.cost.input > 0 || entry.cost.output > 0);
+      const cost = !entry.cost ? ''
+        : paid ? `$${entry.cost.input} / $${entry.cost.output}` : 'free';
+      row.innerHTML = `<span class="palette-check">✓</span>`
+        + `<span class="palette-name">${escapeHtml(entry.label)}</span>`
+        + (cost ? `<span class="palette-cost">${escapeHtml(cost)}</span>` : '');
+      row.onclick = () => choose(entry);
+      row.onmouseenter = () => {
+        if (active === index) return;
+        active = index;
+        listEl.querySelectorAll('.palette-item').forEach((el, i) => el.classList.toggle('active', i === index));
+      };
+      listEl.appendChild(row);
+    });
+  }
+
+  async function choose(entry) {
+    close();
+    await setModelRef(entry.ref);
+    toast(`Model: ${entry.label}`, 'ok');
+  }
+
+  inputEl.oninput = () => {
+    const terms = inputEl.value.toLowerCase().split(/\s+/).filter(Boolean);
+    matches = entries.filter((entry) => {
+      const haystack = `${entry.provider} ${entry.label} ${entry.key}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+    active = 0;
+    render();
+  };
+  inputEl.onkeydown = (event) => {
+    if (event.key === 'Escape') { close(); return; }
+    if (event.key === 'ArrowDown') { event.preventDefault(); active = Math.min(matches.length - 1, active + 1); render(); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); active = Math.max(0, active - 1); render(); }
+    else if (event.key === 'Enter') { event.preventDefault(); if (matches[active]) choose(matches[active]); }
+  };
+  backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close(); });
+  document.body.appendChild(backdrop);
+  inputEl.focus();
+  render();
 }
 
 async function startAgent(model) {
@@ -152,8 +280,11 @@ function selectedModelRef() {
 }
 
 function currentModelLabel() {
-  const select = $('agent-model');
-  return select?.selectedOptions?.[0]?.textContent || modelValue(agent?.model) || 'the model';
+  const wanted = state.modelKey
+    || localStorage.getItem(MODEL_KEY)
+    || modelValue(agent?.model);
+  const entry = modelEntries().find((item) => item.key === wanted);
+  return entry ? entry.label : (wanted || 'default model');
 }
 
 function applySelectValue(select, value) {
@@ -172,13 +303,12 @@ function applySelectValue(select, value) {
 async function loadModels() {
   const select = $('agent-model');
   select.innerHTML = '';
-  let models = [];
   try {
-    models = (await oc.models())?.data || [];
+    state.models = (await oc.models())?.data || [];
   } catch (_) {
-    models = [];
+    state.models = [];
   }
-  for (const model of models) {
+  for (const model of state.models) {
     const group = document.createElement('optgroup');
     group.label = model.providerID;
     const base = document.createElement('option');
@@ -194,12 +324,9 @@ async function loadModels() {
     }
     select.appendChild(group);
   }
-  const wanted = modelValue(selectedModelRef());
-  if (!models.length && wanted) {
-    applySelectValue(select, wanted);
-  } else {
-    applySelectValue(select, wanted);
-  }
+  applySelectValue(select, modelValue(selectedModelRef()));
+  state.modelKey = select.value;
+  updateOcStatus();
   return parseModelValue(select.value);
 }
 
@@ -963,11 +1090,11 @@ function wireUI() {
     const started = await agent?.newSession(title);
     toast(started ? 'New session started' : 'Could not start a session', started ? 'ok' : 'err');
   };
+  $('oc-status').onclick = openModelPalette;
   $('agent-model').onchange = async () => {
-    const value = $('agent-model').value;
-    localStorage.setItem(MODEL_KEY, value);
-    setStatusMsg(`model: ${value}`);
-    await agent?.setModel(parseModelValue(value));
+    const ref = parseModelValue($('agent-model').value);
+    setStatusMsg(`model: ${modelValue(ref)}`);
+    await setModelRef(ref);
   };
   $('agent-retry').onclick = () => agent?.retry();
   $('agent-notice-stop').onclick = () => agent?.stop();
@@ -1478,5 +1605,8 @@ window.__mermaidStudio = {
   handleNotice,
   loadModels,
   openWorkspaceModal,
+  openModelPalette,
+  setModelRef,
+  modelEntries,
   get blocks() { return state.pendingBlocks; },
 };
