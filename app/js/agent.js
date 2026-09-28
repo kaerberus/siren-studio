@@ -109,7 +109,20 @@ export function createAgent({
     directory = workspace || config?.workspace || '/';
     if (selectedModel) model = selectedModel;
     setStatus('connecting…');
-    const available = (config?.oc?.agents || []).some((a) => a.id === AGENT_ID);
+
+    let available = hasAgent(config);
+    if (!available) {
+      // The agent list is the only way to know whether the agent exists: creating
+      // a session with an unknown agent id succeeds regardless, so the call tells
+      // us nothing. Refresh rather than report a stale "not installed".
+      const fresh = await oc.agents().catch(() => null);
+      const list = fresh?.data || [];
+      if (list.length) {
+        if (config?.oc) config.oc.agents = list;
+        available = list.some((agent) => agent.id === AGENT_ID);
+      }
+    }
+
     try {
       await ensureSession();
       setStatus(available ? readyLabel() : `${AGENT_ID} not installed`);
@@ -117,6 +130,10 @@ export function createAgent({
     } catch (err) {
       setStatus(`offline · ${err.message}`);
     }
+  }
+
+  function hasAgent(config) {
+    return (config?.oc?.agents || []).some((agent) => agent.id === AGENT_ID);
   }
 
   async function setModel(next) {
