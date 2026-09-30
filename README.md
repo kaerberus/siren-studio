@@ -1,14 +1,10 @@
 # Siren Studio
 
 [Mermaid.js](https://mermaid.js.org) is a way to draw diagrams from simple code.
-One line draws a flowchart; a few more colour it:
+You write a line like:
 
 ```text
-flowchart LR
-    input[dough]:::dough --> process{oven}:::oven --> output[bread]:::bread
-    classDef dough fill:#f3e3c3,stroke:#c9a86a,color:#4a3a1a
-    classDef oven fill:#e2603c,stroke:#a13d22,color:#ffffff
-    classDef bread fill:#d9a441,stroke:#9c6f1f,color:#2a1f08
+flowchart LR; input[dough] --> process{oven} --> output[bread]
 ```
 
 And it renders as a flowchart:
