@@ -88,13 +88,17 @@ open: `opencode service status`).
 - **Selection sync** — hover a node in the preview and its source lines light up;
   click an outline entry to jump to its definition; click an ordinary node to
   jump to it in the editor.
-- **Cross-file links** — a node whose label names a diagram file becomes a link.
-  `Sub[[see 03-payment.mmd]]` opens `03-payment.mmd` in a tab when clicked, and
-  gets a dotted underline and a pointer cursor so it is visible before you hover.
-  Keep the extension: `Sub[see 03-payment]` is an ordinary node. The file has to
-  exist too — a reference to one that is not there stays unlinked, so a diagram
-  the agent has not written yet does not look clickable. A bare filename resolves
-  anywhere in the diagrams directory, preferring a sibling of the open diagram.
+- **Cross-file links** — a node that hands off to another diagram links with
+  Mermaid's own `click` directive:
+  `click Payment "03-payment.mmd" "Open the payment detail"`. Clicking the node
+  opens that file in a tab instead of navigating the browser, and the node is
+  drawn as a link — accent colour, underlined, pointer — so the hand-off is
+  visible rather than something you have to know. Targeting is by node **id**, so
+  node labels stay free for prose. The target is a filename in the diagrams
+  directory or a path from the project root; a bare filename resolves anywhere in
+  the directory, preferring a sibling of the open diagram. A link to a file that
+  is not there stays a plain node, so a diagram the agent has not written yet does
+  not look clickable.
 - **Panels** — Files, Outline (nodes + subgraphs), and **Gaps**, which renders
   the diagram's `*.gaps.md` design-gap ledger.
 - **Tabs, autosave, live reload** — when the agent rewrites a file the editor
@@ -133,9 +137,9 @@ questions with recommended defaults. It keeps a `*.gaps.md` ledger beside each
 diagram and cites `path:line` for claims about real code.
 
 One concern per graph: when a flowchart starts answering two questions the agent
-splits it into `NN-topic.mmd` and leaves a reference node behind in the parent —
-which is what the cross-file links above are for. `graph_validate` nudges it past
-~25 nodes and flags a reference whose file does not exist.
+splits it into `NN-topic.mmd` and leaves a `click`-linked node behind in the parent
+— which is what the cross-file links above are for. `graph_validate` nudges it past
+~25 nodes and flags a link whose file does not exist.
 
 It is pinned to `deepseek/deepseek-flash` via the `model:` field in its
 frontmatter; remove that line to let it inherit whatever OpenCode is set to.
@@ -390,15 +394,13 @@ JavaScript runtime.
 It also reports what the source alone cannot show. These are **warnings, never
 errors** — a diagram can be perfectly valid and still get one:
 
-- **a reference that goes nowhere** — a node label naming a `*.mmd` that does not
-  exist would be a dead link in the editor, which the agent cannot see from
-  inside its own reasoning;
+- **a link that goes nowhere** — a `click` naming a `*.mmd` that does not exist
+  would be a dead end in the editor, which the agent cannot see from inside its
+  own reasoning;
 - **the size advisory** — past ~25 nodes or 5 subgraphs, a nudge to consider
   splitting instead of growing;
 - **a missing ledger** — a diagram with no sibling `*.gaps.md`, checked when
-  validating by path;
-- **a `click` directive naming a diagram** — Mermaid's own `click` is not what
-  makes a link here, so the warning names the form that does.
+  validating by path.
 
 > **Loading the plugin for the first time requires `opencode service restart`.**
 > Local plugin files are cached in the running process; after that one restart,
@@ -417,7 +419,7 @@ tests/bootstrap.sh    # once: fetch Node + jsdom if you don't already have them
 tests/run.sh
 ```
 
-Seven suites, ~240 checks. `run.sh` starts its own bridge on port 8788 against a
+Seven suites, ~245 checks. `run.sh` starts its own bridge on port 8788 against a
 throwaway workspace, so your live editor and your real project are never touched.
 They cover the editor (boot, tabs, preview, outline, the gap panel, chat
 rendering, cross-file links, both splitters, the model palette, workspace labels

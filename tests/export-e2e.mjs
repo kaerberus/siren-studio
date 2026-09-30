@@ -1,5 +1,7 @@
-// Validate viewer.buildExportSvg() against real Mermaid output: the markup it
-// produces must be <img>-rasterisable (no foreignObject) and keep every label.
+// The suite that drives the *real* Mermaid bundle rather than the stub the other
+// jsdom suites install. Two things only it can answer: whether export markup is
+// <img>-rasterisable (no foreignObject) and keeps every label, and whether a
+// `click` directive lands on the node id the editor looks up.
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -74,6 +76,43 @@ try {
   check('re-render after export', false, err.message);
 }
 if (after) check('preview config restored (html labels again)', after.svg.includes('foreignObject'));
+
+// Links: only the real renderer can prove that a `click` directive lands on the
+// node id the editor looks up. The stub in smoke.mjs sets `data-id` directly, so
+// it cannot catch a mismatch between Mermaid's real ids and nodeIdOf().
+try {
+  const stage = window.document.createElement('div');
+  const target = window.document.createElement('div');
+  window.document.body.append(stage, target);
+  viewer.initViewer({ stageEl: stage, targetEl: target, emptyEl: window.document.createElement('div') });
+  await viewer.render(cases['flowchart.mmd']);
+
+  const ids = viewer.getNodeElements().map((n) => n.id);
+  check('real render: node ids are readable off the SVG',
+    ids.includes('RenderPipeline'), ids.join(','));
+
+  const marked = viewer.markNodeLinks(new Map([['RenderPipeline', '02-render-pipeline.mmd']]));
+  check('real render: the click target is marked as a link',
+    marked.length === 1 && marked[0].path === '02-render-pipeline.mmd',
+    JSON.stringify(marked));
+  check('real render: marking is id-based, not label-based (the label is prose)',
+    target.querySelector('.node-link')?.textContent.includes('Render pipeline'),
+    target.querySelector('.node-link')?.textContent || 'nothing marked');
+
+  viewer.markNodeLinks(new Map([['Start', 'x.mmd']]));
+  const markedEl = target.querySelector('.node-link');
+  const markedId = markedEl?.getAttribute('data-id')
+    || (markedEl?.id || '').match(/^flowchart-(.+?)-\d+$/)?.[1];
+  check('real render: a fresh pass drops the previous mark',
+    target.querySelectorAll('.node-link').length === 1 && markedId === 'Start',
+    `${target.querySelectorAll('.node-link').length} marked, id=${markedId}`);
+
+  viewer.markNodeLinks(new Map());
+  check('real render: an empty map clears every mark',
+    target.querySelectorAll('.node-link').length === 0);
+} catch (err) {
+  check('real render: link marking', false, err.message);
+}
 
 let failed = 0;
 for (const [s, n, e] of results) { if (s === 'FAIL') failed += 1; console.log(`${s}  ${n}${e ? `  [${e}]` : ''}`); }

@@ -136,60 +136,57 @@ check("size advisory is silent for a small graph",
       not [w for w in small_result["warnings"] if "splitting" in w["message"]],
       json.dumps(small_result["warnings"]))
 
-# 8. cross-file links: a reference to a file that is not there is a dead end,
-#    and the agent cannot see the directory from inside its own reasoning.
+# 8. cross-file links are Mermaid's own `click` directive, and the lint checks
+#    that the target exists - which the agent cannot see from inside its own
+#    reasoning, so the lint measures it and hands back the answer.
 existing = _real.rsplit("/", 1)[-1]
 link_ok = post("/api/validate",
-               {"source": f"flowchart TD\n    A --> Sub[[see {existing}]]\n"})
-check("a reference to an existing diagram is not flagged",
+               {"source": f'flowchart TD\n    A --> B\n    click B "{existing}"\n'})
+check("a click to an existing diagram is not flagged",
       not [w for w in link_ok["warnings"] if "does not exist" in w["message"]],
       json.dumps(link_ok["warnings"]))
 
 link_dead = post("/api/validate",
-                 {"source": "flowchart TD\n    A --> Sub[[see 99-missing.mmd]]\n"})
+                 {"source": 'flowchart TD\n    A --> B\n    click B "99-missing.mmd"\n'})
 dead = [w["message"] for w in link_dead["warnings"] if "does not exist" in w["message"]]
-check("a reference to a missing diagram is flagged", bool(dead), dead[:1])
-check("a dead reference is only a warning", link_dead["ok"] is True)
+check("a click to a missing diagram is flagged", bool(dead), dead[:1])
+check("a dead link is only a warning", link_dead["ok"] is True)
+check("the warning names the node and the target it wanted",
+      bool(dead) and "click B" in dead[0] and "99-missing.mmd" in dead[0],
+      dead[0] if dead else "no warning")
 
-# the reference has to be in a node label: not a comment, not an edge label
-ignored = post("/api/validate", {"source": "flowchart TD\n"
-                                          "    %% see 99-missing.mmd\n"
-                                          "    A -->|see 98-missing.mmd| B\n"})
-check("a reference outside a node label is not treated as a link",
-      not [w for w in ignored["warnings"] if "does not exist" in w["message"]],
-      json.dumps(ignored["warnings"]))
+# a filename in a label is a caption now, not a link, so it must not be flagged
+prose = post("/api/validate",
+             {"source": "flowchart TD\n    Sub[[see 99-missing.mmd]] --> B\n"})
+check("a filename in a label is not treated as a link",
+      not [w for w in prose["warnings"] if "does not exist" in w["message"]],
+      json.dumps(prose["warnings"]))
 
-# a `click` directive is an attempted link that will not work. Seen in the wild:
-# an agent that had not been told the convention reached for Mermaid's own click.
-clicked = post("/api/validate", {"source": "flowchart TD\n"
-                                           "    A --> B\n"
-                                           '    click B "other.mmd" "Open other"\n'})
-click_messages = [w["message"] for w in clicked["warnings"]]
-check("a `click` directive naming a diagram is flagged",
-      any("`click` does not make a link" in m for m in click_messages),
-      json.dumps(click_messages))
-check("the `click` warning says what to write instead",
-      any("Sub[[see other.mmd]]" in m for m in click_messages),
-      json.dumps(click_messages))
+# and an external URL is not ours to police
+external = post("/api/validate",
+                {"source": 'flowchart TD\n    A --> B\n    click B "https://example.com"\n'})
+check("an external click target is ignored",
+      not [w for w in external["warnings"] if "does not exist" in w["message"]],
+      json.dumps(external["warnings"]))
 
-# by path: the reference AND the missing sibling ledger are both reported
-put_file("__probe-dead.mmd", "flowchart TD\n    A --> Sub[[see 97-missing.mmd]]\n")
+# by path: the dead link AND the missing sibling ledger are both reported
+put_file("__probe-dead.mmd", 'flowchart TD\n    A --> B\n    click B "97-missing.mmd"\n')
 try:
     by_path = post("/api/validate", {"path": "__probe-dead.mmd"})
     by_path_messages = [w["message"] for w in by_path["warnings"]]
-    check("validating by path still flags the dead reference",
+    check("validating by path still flags the dead link",
           any("does not exist" in m for m in by_path_messages), json.dumps(by_path_messages))
     check("validating by path flags the missing gap ledger",
           any("gap ledger" in m for m in by_path_messages), json.dumps(by_path_messages))
 finally:
     delete_file("__probe-dead.mmd")
 
-put_file("__probe-ok.mmd", f"flowchart TD\n    A --> Sub[[see {existing}]]\n")
+put_file("__probe-ok.mmd", f'flowchart TD\n    A --> B\n    click B "{existing}"\n')
 put_file("__probe-ok.gaps.md", "# probe - design gaps\n\n## Open questions\n- none\n")
 try:
     clean = post("/api/validate", {"path": "__probe-ok.mmd"})
     clean_messages = [w["message"] for w in clean["warnings"]]
-    check("a diagram with a live reference and a ledger is clean",
+    check("a diagram with a live link and a ledger is clean",
           not any("does not exist" in m or "gap ledger" in m for m in clean_messages),
           json.dumps(clean_messages))
 finally:

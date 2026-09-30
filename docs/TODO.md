@@ -29,6 +29,11 @@ python3 start.py --checkout       # force this repo instead
 - If the bridge was started from inside an agent's shell, restarting the OpenCode
   service kills it. Starting it from your own terminal survives that.
 
+> **The linking spec changed in item 12.** Items 5, 6 and 8 describe the earlier
+> "filename in a node label" rule. The current rule is Mermaid's own
+> `click <nodeId> "<path>"` directive; read item 12 for the link form and treat
+> those mentions as history.
+
 ## The work
 
 ### 1. ~~Move the dev test suites into the repo~~ — DONE
@@ -36,7 +41,7 @@ python3 start.py --checkout       # force this repo instead
 Now in `tests/`. `tests/bootstrap.sh` fetches Node + jsdom into `tests/.node`
 and `tests/node_modules` (both gitignored); `tests/run.sh` starts an isolated
 bridge on port 8788 against `/tmp/opencode/mermaid-tests/workspace`, runs all
-seven suites (241 checks), and tears the bridge down.
+seven suites (247 checks), and tears the bridge down.
 
 Paths are derived from `import.meta.url` / `__file__`, and the bridge URL,
 workspace and ports come from `TEST_PORT`, `TEST_WORKSPACE`, `TEST_BASE`,
@@ -239,6 +244,9 @@ and Stop is the affordance for a busy turn.
 
 ### 8. ~~Tell the agent how links and splits actually work~~ — DONE
 
+**The link form here was superseded by item 12** — it taught a filename-in-a-label
+rule that was never the right spec. The splitting half stands.
+
 It knew the rule (split by concern) and one syntax example, and nothing about the
 mechanism or the obligations.
 
@@ -337,6 +345,37 @@ prints which project it picked and why.
 **The one behaviour change:** a bare `python3 start.py` no longer guarantees this
 checkout. In steady use it reopens whatever you last had open — including the
 repo — and the banner always says which one.
+
+### 12. ~~Links are Mermaid's own `click`, not a filename in a label~~ — DONE
+
+The spec was never settled when item 6 shipped, so item 8 taught a rule that turned
+out to be the wrong one. Settled now: **a link is Mermaid's own
+`click <nodeId> "<path>"` directive.** The editor intercepts it and opens the
+target in a tab instead of navigating the browser. Targeting is by node **id**, so
+labels stay free for prose — which is exactly what the label-token rule got wrong.
+
+- `viewer.markNodeLinks(targets)` takes a `Map<nodeId, path>`, built by
+  `analyzeGraph` (which now parses `click`) plus `resolveDiagramTarget`. Label text
+  is no longer consulted.
+- Linked nodes are drawn as links: accent colour, solid underline, pointer. The old
+  dotted hint was too quiet, and invisible whenever nothing resolved.
+- `graph_validate` **inverts**: it warns when a `click` target does not exist, and
+  is quiet about filenames in labels (captions now). External URLs and `call` forms
+  are ignored.
+- Everything that taught the old rule is updated: `conventions_block`,
+  `diagram-selection.md`, `vocabulary.md`, `graph-engineer.md`, the README.
+
+Content: `01-example-flow.mmd` keeps its meaning, but the stub is now a single
+`[[subroutine]]` node with `click RenderPipeline "02-render-pipeline.mmd"` — a
+one-node subgraph existed only to be a link endpoint, and a node is what the reader
+clicks. Its ledger records the convention as a decision and drops the two questions
+it answered. The label needs quotes (`[["Render pipeline (detail)"]]`): bare
+parentheses in an unquoted label are a Mermaid parse error, caught by export-e2e.
+
+Worth remembering: the smoke stub sets `data-id` itself, so it *cannot* prove that
+Mermaid's real ids are readable. `export-e2e` drives the vendored bundle, so the id
+round-trip and the marking now live there — that is the part which would otherwise
+fail silently in the app.
 
 ## Notes that are easy to forget
 

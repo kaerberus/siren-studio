@@ -124,14 +124,8 @@ SKIP_LINE_RE = re.compile(r"^(?:%%|classDef\b|class\s|style\s|click\s|linkStyle\
                           re.IGNORECASE)
 SIZE_WARN_NODES = 25
 SIZE_WARN_SUBGRAPHS = 5
-# A node *label*: id, shape opener, label text, matching closer. Used to find
-# diagram references where the editor will actually turn them into links - a
-# node label, not a comment or an edge label.
-NODE_LABEL_RE = re.compile(
-    r"(?:^|[\s>|])[A-Za-z_][\w-]*\s*"
-    r"(?:\(\(|\[\[|\(\[|\[\(|\{\{|\[\/|\[\\|\[|\(|\{)\s*"
-    r"([^\]\)\}]*?)\s*"
-    r"(?:\)\)|\]\]|\}\}|\]\)|\[\/|\]\\|\]|\)|\})")
+# A diagram path as it appears in a `click` target: `03-payment.mmd`, or
+# `graphs/03-payment.mmd` the way an agent sees it from its project root.
 DIAGRAM_REF_RE = re.compile(r"[A-Za-z0-9._/-]+\.(?:mmd|mermaid)\b", re.IGNORECASE)
 
 
@@ -251,47 +245,53 @@ def lint_mermaid(source: str) -> dict:
 
 
 # ── cross-file links ───────────────────────────────────────────────────────
-# An agent writes `Sub[[see 03-payment.mmd]]` from a convention, but whether that
-# becomes a link depends on the file existing - something it cannot see from
-# inside its own reasoning. So the lint measures it and hands back the answer.
+# Links are Mermaid's own `click <nodeId> "<path>"` directive, so a diagram stays
+# portable to any renderer; the editor's variation is only where the click lands
+# (a tab, not a browser navigation). Whether a link works depends on the file
+# existing, which the agent cannot see from inside its own reasoning - so the
+# lint measures it and hands back the answer.
 
-def diagram_references(source: str) -> list[str]:
-    """Diagram filenames named in node labels, in first-seen order."""
-    refs: list[str] = []
-    for raw in (source or "").split("\n"):
-        text = raw.strip()
-        if not text or text.startswith("%%") or SKIP_LINE_RE.match(text):
+CLICK_LINK_RE = re.compile(
+    r"""^\s*click\s+(\S+)\s+(?:href\s+)?["']([^"']+)["']""", re.IGNORECASE)
+
+
+def diagram_links(source: str) -> list[tuple[int, str, str]]:
+    """`(line, node id, target)` for every click directive naming a diagram."""
+    links: list[tuple[int, str, str]] = []
+    for index, raw in enumerate((source or "").split("\n")):
+        match = CLICK_LINK_RE.match(raw)
+        if not match:
             continue
-        for label in NODE_LABEL_RE.findall(raw):
-            for ref in DIAGRAM_REF_RE.findall(label.strip("[](){} \t\"'")):
-                if ref not in refs:
-                    refs.append(ref)
-    return refs
+        target = match.group(2).strip()
+        if DIAGRAM_REF_RE.fullmatch(target.replace("\\", "/")):
+            links.append((index + 1, match.group(1), target))
+    return links
 
 
-def link_warnings(source: str, graphs_dir: Path) -> list[dict]:
-    """Warn about diagram references that would not link anywhere.
+def click_warnings(source: str, graphs_dir: Path) -> list[dict]:
+    """Warn about `click` links pointing at a diagram that is not there.
 
-    Mirrors the editor's resolution: an explicit relative path has to exist,
-    a bare filename has to match a diagram somewhere in the directory.
+    Mirrors the editor's resolution: an explicit relative path has to exist at
+    that path, a bare filename has to match a diagram anywhere in the directory.
     """
-    refs = diagram_references(source)
-    if not refs or not graphs_dir.is_dir():
+    links = diagram_links(source)
+    if not links or not graphs_dir.is_dir():
         return []
-    names: set[str] = set()
     relatives: set[str] = set()
+    names: set[str] = set()
     for entry in graphs_dir.rglob("*"):
         if entry.is_file() and entry.suffix.lower() in (".mmd", ".mermaid"):
             relatives.add(entry.relative_to(graphs_dir).as_posix())
             names.add(entry.name.lower())
     warnings: list[dict] = []
-    for ref in refs:
-        target = ref.replace("\\", "/")
-        found = target in relatives if "/" in target else Path(target).name.lower() in names
+    for line, node, target in links:
+        path = target.replace("\\", "/").lstrip("./")
+        found = path in relatives if "/" in path else Path(path).name.lower() in names
         if not found:
             warnings.append({
-                "line": 1,
-                "message": f"references {ref}, which does not exist - write it or fix the name",
+                "line": line,
+                "message": (f"`click {node}` links to {target}, which does not exist - "
+                            "write it or fix the path"),
             })
     return warnings
 
@@ -304,30 +304,6 @@ def ledger_warning(path: Path) -> list[dict]:
     if ledger.is_file():
         return []
     return [{"line": 1, "message": f"has no gap ledger - expected a sibling {ledger.name}"}]
-
-
-CLICK_LINE_RE = re.compile(r"^\s*click\s", re.IGNORECASE)
-
-
-def click_warnings(source: str) -> list[dict]:
-    """A `click` directive naming a diagram is an attempted link that will not work.
-
-    Observed in the wild before the convention was written down: the agent had no
-    way to know the editor links from a node label, so it reached for Mermaid's
-    own `click`. The editor ignores that directive, so saying nothing here would
-    let it believe the link worked.
-    """
-    warnings: list[dict] = []
-    for index, raw in enumerate((source or "").split("\n")):
-        if not CLICK_LINE_RE.match(raw):
-            continue
-        for ref in DIAGRAM_REF_RE.findall(raw):
-            warnings.append({
-                "line": index + 1,
-                "message": (f"`click` does not make a link in the editor - name the diagram "
-                            f"in a node label instead, e.g. `Sub[[see {ref}]]`"),
-            })
-    return warnings
 
 
 def state_dir() -> Path:
@@ -371,24 +347,27 @@ def conventions_block() -> str:
         "- One flow per file, named `NN-topic.mmd` (`03-payment.mmd`).",
         "- The gap ledger for `NN-topic.mmd` is `NN-topic.gaps.md`.",
         "- One concern per graph. If you cannot state what it answers in one sentence,",
-        "  it is two diagrams: split it into its own `NN-topic.mmd` and reference it",
-        "  from the parent as `Sub[[see 03-payment.mmd]]`.",
+        "  it is two diagrams: split it into its own `NN-topic.mmd` and link to it from",
+        "  the parent with `click 03-payment \"03-payment.mmd\"`.",
         "- Prefer splitting over growing. A diagram that has to be panned or zoomed to",
         "  read has stopped being a review tool.",
         "",
-        "## References between diagrams",
+        "## Links between diagrams",
         "",
-        "A node whose **label** names a diagram file is a link: clicking it opens that",
-        "file. Two things have to be true, and neither is checkable by eye:",
+        "Link with Mermaid's own `click` directive. The editor opens the target in a tab",
+        "instead of navigating the browser, and draws the linked node as a link:",
         "",
-        "- the label contains a token ending in `.mmd` or `.mermaid`, **extension included**",
-        "  (`Sub[see 03-payment]` is an ordinary node; `Sub[[see 03-payment.mmd]]` is a link);",
-        "- that file exists. A reference to a file that is not there goes nowhere, and",
-        "  `graph_validate` warns about it.",
+        "    click Payment \"03-payment.mmd\" \"Open the payment detail\"",
         "",
-        "The name counts only in a node label - not in a comment, an edge label, or a",
-        "`click` directive. A bare filename is resolved against this directory; a path",
-        "like `sub/03-payment.mmd` is resolved as written.",
+        "Targeting is by node **id**, so the node's label stays free for prose. Never put",
+        "a filename in a label to make a link - that is just a caption.",
+        "",
+        "- The first quoted argument is the target: a filename in this directory, or a",
+        "  path from the project root (`graphs/03-payment.mmd`). `click Node href \"...\"`",
+        "  works as well.",
+        "- The file has to exist. `graph_validate` warns when a link points nowhere.",
+        "- Keep the id correct. Ids are not drawn, which is why the editor marks a linked",
+        "  node visibly rather than relying on you remembering.",
         "",
         "## Splitting a diagram",
         "",
@@ -1317,8 +1296,7 @@ class Handler(BaseHTTPRequestHandler):
         # Cross-file checks need the directory, so they live out here rather than
         # in the pure lint. They hold whichever parser ends up answering.
         warnings = list(structural["warnings"])
-        warnings += link_warnings(source, self.workspace.graphs_dir)
-        warnings += click_warnings(source)
+        warnings += click_warnings(source, self.workspace.graphs_dir)
         if resolved is not None:
             warnings += ledger_warning(resolved)
         result = {

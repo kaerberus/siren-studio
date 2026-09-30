@@ -539,21 +539,22 @@ function closeTab(key) {
   }
 }
 
-// A node label may name another diagram ("see 03-payment.mmd"). Resolve that to
-// a path in this workspace so the node can link to it. Only real files resolve:
-// a reference the agent has not written yet stays a plain node.
 const isDiagramPath = (path) => /\.(?:mmd|mermaid)$/i.test(path || '');
 
-function resolveDiagramRef(label) {
-  const name = String(label || '').split(/[\s,;:()[\]{}<>"']+/).find(isDiagramPath);
-  if (!name) return null;
+/**
+ * Resolve a `click` target to a path in this workspace. The target is a bare
+ * filename or a path from the project root, as an agent sees it. Only real files
+ * resolve: a link to a diagram that has not been written yet stays a plain node
+ * rather than becoming a dead end.
+ */
+function resolveDiagramTarget(target) {
+  const name = String(target || '').trim().replace(/^\.\//, '');
+  if (!isDiagramPath(name)) return null;
   const diagrams = (state.entries || []).filter((entry) => isDiagramPath(entry.path));
   if (name.includes('/')) {
-    const path = name.replace(/^\.\//, '');
-    return diagrams.some((entry) => entry.path === path) ? path : null;
+    return diagrams.some((entry) => entry.path === name) ? name : null;
   }
-  // Prefer a sibling of the open file, then any file with that basename. Labels
-  // are prose, so match the basename case-insensitively.
+  // Prefer a sibling of the open file, then any file with that basename.
   const active = findTab(state.active);
   const here = active?.path?.includes('/')
     ? active.path.slice(0, active.path.lastIndexOf('/') + 1) : '';
@@ -562,6 +563,16 @@ function resolveDiagramRef(label) {
   const lower = name.toLowerCase();
   const byName = diagrams.find((entry) => (entry.path.split('/').pop() || '').toLowerCase() === lower);
   return byName ? byName.path : null;
+}
+
+/** node id -> openable path, for every `click` in this diagram that resolves. */
+function nodeLinkTargets(text) {
+  const targets = new Map();
+  for (const [id, target] of analyzeGraph(text).clicks) {
+    const path = resolveDiagramTarget(target);
+    if (path) targets.set(id, path);
+  }
+  return targets;
 }
 
 async function openFile(path, { silent = false } = {}) {
@@ -690,7 +701,7 @@ function scheduleRender(delay = 260) {
     const tab = findTab(state.active);
     if (!tab) return;
     const result = await renderGraph(tab.content);
-    markNodeLinks(resolveDiagramRef);
+    markNodeLinks(nodeLinkTargets(tab.content));
     updateViewerNote();
     const badge = $('lint-badge');
     if (result.ok) {
@@ -718,6 +729,7 @@ function analyzeGraph(text) {
   const nodes = new Map();
   const byLine = new Map();
   const subgraphs = [];
+  const clicks = new Map();   // node id -> the diagram it links to
   const lines = (text || '').split('\n');
   const skip = /^\s*(%%|classDef|class\s|style\s|linkStyle|click\s)/;
 
@@ -727,6 +739,14 @@ function analyzeGraph(text) {
   };
 
   lines.forEach((line, index) => {
+    // Mermaid's own link syntax: `click <id> "<path>"`, optionally `click <id>
+    // href "<path>"`. Ids, so the node's label stays free for prose.
+    const clicked = line.match(/^\s*click\s+(\S+)\s+(?:href\s+)?["']([^"']+)["']/i);
+    if (clicked) {
+      const target = clicked[2].trim();
+      if (isDiagramPath(target) && !clicks.has(clicked[1])) clicks.set(clicked[1], target);
+      return; // a click line declares no nodes of its own
+    }
     if (skip.test(line)) return;
     const sub = line.match(/^\s*subgraph\s+([^\s[\]]+)(?:\s*\["?([^\]]*?)"?\])?/);
     if (sub) {
@@ -754,6 +774,7 @@ function analyzeGraph(text) {
   return {
     nodes: [...nodes.values()],
     subgraphs,
+    clicks,
     byLine,
     linesForId,
   };
@@ -1315,7 +1336,7 @@ function wireUI() {
     button.onclick = () => sendChat(button.dataset.prompt);
   });
 
-  // viewer node click → open a referenced diagram, else jump to its source
+  // viewer node click → follow its `click` link, else jump to its source
   $('graph-target').addEventListener('click', (event) => {
     const group = event.target.closest('g.node, g.statediagram-state');
     if (!group) return;

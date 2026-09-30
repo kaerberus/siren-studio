@@ -23,7 +23,7 @@ running (`opencode service status`); they spawn their own throwaway
 | --- | --- |
 | `smoke.mjs` | editor boot, tabs, preview, outline, gaps panel, chat rendering, model palette, smart view, missing-agent handling, file tree, workspace picker |
 | `smart-view.mjs` | the transposition decision across portrait / landscape / square panes |
-| `export-e2e.mjs` | `buildExportSvg` output rasterisable by real Mermaid (`<img>`), labels kept, no external refs |
+| `export-e2e.mjs` | `buildExportSvg` output rasterisable by real Mermaid (`<img>`), labels kept, no external refs — and that a `click` link lands on the node id Mermaid really emits |
 | `project-setup.py` | project/diagrams-directory detection guards, the launcher's project memory, awareness wiring, idempotent re-run, unwire |
 | `plugin-bridge.py` | the plugin's bridge API: validation round-trip, focus delivery, the size advisory |
 | `chat-e2e.mjs` | a live agent round-trip through the app's own `agent.js` |
@@ -35,7 +35,9 @@ running (`opencode service status`); they spawn their own throwaway
   needs a real browser to lay out. `export-e2e.mjs` is the exception: it loads
   the **vendored** bundle for real (via `vm.runInContext`, since the bundle
   starts with `"use strict"` and top-level `var` does not leak from strict-mode
-  `eval`) and checks the markup against it.
+  `eval`) and checks the export markup and the link node ids against it. That
+  matters because the stub sets `data-id` itself, so it cannot catch a mismatch
+  between Mermaid's real ids and what the editor looks up.
 - Tests must run against a bridge whose project the developer's editor is *not*
   using. That is why the suites read their bridge URL and workspace from the
   environment rather than hardcoding them.

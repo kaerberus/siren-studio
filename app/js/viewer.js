@@ -508,18 +508,20 @@ export function clearHighlight() {
 
 // ── cross-file links ───────────────────────────────────────────────────────
 /**
- * Mark nodes whose label names another diagram file, so the caller can open it
- * on click. `resolve(label)` returns the path to link to, or nullish to leave
- * the node alone. Existing marks are cleared first: the graph re-renders on
- * every edit and a reference may have been renamed away.
+ * Mark nodes that link to another diagram, so the caller can open it on click.
+ *
+ * `targets` maps a node **id** to the path it opens, built from the source's
+ * `click` directives. Ids, not labels: a label is the node's content and stays
+ * free for prose. Existing marks are cleared first, because the graph re-renders
+ * on every edit and a link may have been removed or renamed away.
  */
-export function markNodeLinks(resolve) {
+export function markNodeLinks(targets) {
+  const wanted = targets instanceof Map ? targets : new Map(Object.entries(targets || {}));
   const marked = [];
   for (const { id, el } of getNodeElements()) {
     el.classList.remove('node-link');
     delete el.dataset.link;
-    const label = (el.textContent || '').trim();
-    const path = label ? resolve(label) : null;
+    const path = wanted.get(id);
     if (!path) continue;
     el.classList.add('node-link');
     el.dataset.link = path;

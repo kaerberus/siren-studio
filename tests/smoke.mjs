@@ -390,34 +390,40 @@ try {
   check('chat rendering block', false, err.message);
 }
 
-// cross-file links: a node whose label names a diagram opens that file
+// cross-file links: Mermaid's own `click` directive opens another diagram
 if (cm) {
   try {
     await studio.bridge.write('child.mmd', 'flowchart LR\n    X --> Y\n');
     if (!state.entries.some((e) => e.path === 'child.mmd')) {
       state.entries.push({ path: 'child.mmd', name: 'child.mmd', type: 'file' });
     }
-    const linkSrc = 'flowchart TD\n    A([Start]) --> Sub[[see child.mmd]]\n'
-      + '    Sub --> Gone[[see missing.mmd]]\n';
+    const linkSrc = 'flowchart TD\n'
+      + '    Go[[Payment detail]] --> Stop[Finish]\n'
+      + '    Plain[No link here]\n'
+      + '    click Go "child.mmd" "Open the payment detail"\n'
+      + '    click Stop "missing.mmd"\n';
     cm.replaceRange(linkSrc, { line: 0, ch: 0 }, { line: cm.lineCount(), ch: 0 }, '+input');
     await new Promise((r) => setTimeout(r, 900));
 
     const nodes = [...document.querySelectorAll('#graph-target g.node')];
-    const linked = nodes.find((g) => g.dataset.link);
-    check('a node naming a diagram file becomes a link',
-      Boolean(linked) && linked.dataset.link === 'child.mmd',
+    const byId = (id) => nodes.find((g) => g.dataset.id === id);
+    const linked = byId('Go');
+    check('a click directive links its node to the file',
+      Boolean(linked?.dataset.link) && linked.dataset.link === 'child.mmd',
       linked ? `${linked.dataset.id} -> ${linked.dataset.link}` : 'no link found');
-    check('a reference to a missing file stays a plain node',
-      !nodes.some((g) => g.dataset.id === 'Gone' && g.classList.contains('node-link')));
-    check('an ordinary node stays a plain node',
-      !nodes.some((g) => g.dataset.id === 'A' && g.classList.contains('node-link')));
+    check('the linked node is marked so it reads as a link',
+      Boolean(linked?.classList.contains('node-link')));
+    check('a click to a missing diagram stays a plain node',
+      Boolean(byId('Stop')) && !byId('Stop').classList.contains('node-link'));
+    check('a node without a click directive stays plain',
+      Boolean(byId('Plain')) && !byId('Plain').classList.contains('node-link'));
 
     const opened = () => state.tabs.some((t) => t.path === 'child.mmd');
-    check('the referenced file is not open before the click', !opened());
+    check('the linked file is not open before the click', !opened());
     if (linked) {
       linked.querySelector('text').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
       await new Promise((r) => setTimeout(r, 400));
-      check('clicking a linked node opens the referenced file',
+      check('clicking a linked node opens the file in a tab',
         opened() && state.active === 'child.mmd', `active=${state.active} opened=${opened()}`);
     }
   } catch (err) { check('cross-file link block', false, err.message); }

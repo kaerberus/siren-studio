@@ -378,11 +378,20 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
   stroke: var(--accent) !important; stroke-width: 2.5px !important;
   filter: drop-shadow(0 0 6px rgba(124, 156, 255, 0.55));
 }
-/* A node whose label names another diagram: click to open it. The dotted label
-   is the marker — it has to be visible before you hover, or nobody finds it. */
+/* A node whose `click` links to another diagram: it has to look clickable, so
+   the label is painted like a hyperlink rather than hinted at with a dotted
+   underline. Mermaid styles SVG text itself, hence the !important. */
 .node-link { cursor: pointer; }
-.node-link .label, .node-link .nodeLabel { text-decoration: underline dotted; text-underline-offset: 2px; }
+.node-link .label, .node-link .nodeLabel, .node-link text {
+  fill: var(--accent) !important;
+  color: var(--accent) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .node-link:hover { filter: drop-shadow(0 0 4px rgba(124, 156, 255, 0.85)); }
+.node-link:hover .label, .node-link:hover .nodeLabel, .node-link:hover text {
+  text-decoration-thickness: 2px;
+}
 
 /* ── agent panel ──────────────────────────────────────────────────────── */
 .agent-panel {
