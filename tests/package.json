@@ -1,8 +1,0 @@
-{
-  "name": "opencode-mermaid-tests",
-  "private": true,
-  "description": "Dev-only suites. Neither Node nor jsdom is needed to use the editor.",
-  "devDependencies": {
-    "jsdom": "^26.0.0"
-  }
-}

@@ -38,7 +38,10 @@ visual artifact and the loop is *look → point → adjust*.
 # 1. install the Graph Engineer agent + skill globally
 python3 install-agent.py
 
-# 2. start the editor (opens your browser)
+# 2. check your setup — verifies the agent, OpenCode and vendored assets
+python3 start.py --check
+
+# 3. start the editor (opens your browser)
 python3 start.py
 
 # open a specific project
@@ -301,10 +304,10 @@ ugly fast.
 ## Layout
 
 ```
-opencode-mermaid/
-├─ start.py                 launcher (bridge + browser)
+siren-studio/
+├─ start.py                 launcher (bridge + browser); --check runs the doctor
 ├─ install-agent.py         installs the agent + skill globally
-├─ bridge/server.py         static server, OpenCode proxy, fs API, SSE
+├─ bridge/                  server (static, OpenCode proxy, fs API, SSE) + doctor
 ├─ app/                     the editor
 │  ├─ index.html styles.css
 │  ├─ js/  app.js editor.js viewer.js agent.js bridge.js
@@ -315,7 +318,6 @@ opencode-mermaid/
 │  ├─ global-permissions.json   graph_* denied to every agent by default
 │  ├─ skills/graph-engineering/
 │  └─ plugins/graph-tools.js
-├─ tests/                   dev suites (Node + jsdom; see tests/README.md)
 └─ docs/architecture.md
 ```
 
@@ -415,22 +417,6 @@ errors** — a diagram can be perfectly valid and still get one:
 > list are snapshotted when the service starts. Add or remove a rule and restart,
 > or the running service keeps serving the old tool surface.
 
-## Tests
-
-```sh
-tests/bootstrap.sh    # once: fetch Node + jsdom if you don't already have them
-tests/run.sh
-```
-
-Seven suites, ~250 checks. `run.sh` starts its own bridge on port 8788 against a
-throwaway workspace, so your live editor and your real project are never touched.
-They cover the editor (boot, tabs, preview, outline, the gap panel, chat
-rendering, cross-file links, both splitters, the model palette, workspace labels
-and rescan), the viewer's transposition decision across pane shapes, SVG/PNG
-export against real Mermaid output, project setup, the launcher's project
-memory and awareness wiring, the plugin's bridge API, a live agent round-trip,
-and the permission model end to end. See `tests/README.md`.
-
 ## Status / roadmap
 
 Implemented: everything above, including the plugin.
@@ -440,3 +426,8 @@ parent rather than in a tab, for which the clickable references were the cheap w
 to find out whether it earns the refactor — plus per-tab viewport memory, a
 diagram diff/checkpoint, and `graph_render` (server-side PNG via a headless
 renderer).
+
+## License
+
+MIT — see [LICENSE](LICENSE). The vendored [Mermaid](https://github.com/mermaid-js/mermaid)
+and [CodeMirror](https://github.com/codemirror/codemirror5) keep their own MIT licenses.

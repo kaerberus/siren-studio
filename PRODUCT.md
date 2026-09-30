@@ -54,9 +54,9 @@ both Mermaid and CodeMirror are vendored.
   survives.
 - A `*.gaps.md` ledger sits beside each diagram and holds the open design-gap
   questions.
-- Development and testing happen from the repo checkout: `python3 install-agent.py`
-  installs the global agent, skill and plugin; `python3 start.py` launches;
-  `tests/` holds the dev suites.
+- Development happens from the repo checkout: `python3 install-agent.py`
+  installs the global agent, skill and plugin; `python3 start.py` launches, and
+  `python3 start.py --check` reports what is missing.
 
 ## Capabilities and Constraints
 
@@ -86,10 +86,9 @@ both Mermaid and CodeMirror are vendored.
 ## Brand Commitments
 
 - **Product name: Siren Studio.** Confirmed by the developer as the durable,
-  binding name for future work. The repository directory remains
-  `opencode-mermaid`; the product name is now propagated across the README,
-  `start.py` docstring, UI, browser title, bridge awareness text, agent plugin
-  and dev docs.
+  binding name for future work. The GitHub repository is `siren-studio`; the
+  product name is propagated across the README, `start.py` docstring, UI,
+  browser title, bridge awareness text, agent plugin and docs.
 - The companion agent's name is **Graph Engineer**.
 - Binding framing the developer has used: the graph is *design intent*; the loop
   is *look → point → adjust*; the graph is *the spec* the developer and agent
@@ -105,10 +104,9 @@ both Mermaid and CodeMirror are vendored.
 - `example-graphs/*.mmd` and `example-graphs/*.gaps.md` — worked example diagrams
   and ledgers, shipped as reference (the editor's diagrams directory, `graphs/`,
   is local state and is not committed).
-- `tests/` — seven Node + jsdom dev suites (about 250 checks) that guard specific
-  past regressions; `tests/README.md` documents how to run them.
 - `agent/`, `agent/skills/graph-engineering/`, `agent/plugins/graph-tools.js` and
   `install-agent.py` — the agent, its skill references and its install path.
+- `bridge/doctor.py` — the `--check` setup doctor (Python, no Node).
 
 Absences future work must not fabricate: there are no testimonials, customers,
 press, benchmarks, or user-research findings. There is no `LICENSE` file and no

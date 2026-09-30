@@ -5,6 +5,7 @@ Starts the local bridge (which serves the editor and proxies OpenCode) and
 opens it in your browser.
 
     python3 start.py
+    python3 start.py --check             # verify your setup, then exit
     python3 start.py --project ~/code/my-project
     python3 start.py --checkout          # force this repo, ignoring the last one
     python3 start.py --workspace ~/code/my-project --port 8777 --no-browser
@@ -30,4 +31,7 @@ if __name__ == "__main__":
     if sys.version_info < (3, 9):
         sys.stderr.write("Python 3.9 or newer is required.\n")
         raise SystemExit(1)
+    if "--check" in sys.argv[1:]:
+        import doctor  # type: ignore  # noqa: E402  (bridge/doctor.py)
+        raise SystemExit(doctor.main(sys.argv[1:]))
     raise SystemExit(server.main())

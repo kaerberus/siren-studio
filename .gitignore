@@ -15,10 +15,11 @@ Thumbs.db
 .history/
 *.log
 
-# tests (dev only)
-tests/node_modules/
-tests/.node/
-tests/package-lock.json
+# local dev suites (Node + jsdom; not shipped)
+tests/
+
+# internal handoff notes (local)
+docs/TODO.md
 
 # Impeccable live mode: commit the config, ignore session state
 .impeccable/live/*

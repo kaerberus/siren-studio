@@ -13,19 +13,11 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent
-CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "opencode"
-GLOBAL_CONFIG = CONFIG / "opencode.jsonc"
-PERMISSIONS_SNIPPET = REPO / "agent" / "global-permissions.json"
-DENY_GRAPH_TOOLS = {"action": "graph_*", "resource": "*", "effect": "deny"}
-
-ITEMS = [
-    (REPO / "agent" / "graph-engineer.md", CONFIG / "agents" / "graph-engineer.md"),
-    (REPO / "agent" / "skills" / "graph-engineering",
-     CONFIG / "skills" / "graph-engineering"),
-    (REPO / "agent" / "plugins" / "graph-tools.js",
-     CONFIG / "plugins" / "graph-tools.js"),
-]
+# Target paths live in bridge/install_paths.py so doctor.py checks the same ones.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "bridge"))
+from install_paths import (  # noqa: E402
+    CONFIG, GLOBAL_CONFIG, PERMISSIONS_SNIPPET, DENY_GRAPH_TOOLS, ITEMS,
+)
 
 
 def link_or_copy(source: Path, target: Path, copy: bool) -> str:
