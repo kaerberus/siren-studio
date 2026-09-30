@@ -411,9 +411,16 @@ export function getViewport() {
   };
 }
 
+// Movement (px) before a press turns into a pan. Below it the press stays a
+// click, which is why the pointer is *not* captured on pointerdown: pointer
+// capture retargets the follow-up `click` to the capturing element, so a node
+// under the cursor would never see the click it is meant to handle.
+const DRAG_SLOP = 3;
+
 function bindInteraction() {
   if (!stage) return;
   let dragging = false;
+  let pressed = null;        // where the current press started, until it moves
   let startView = null;
   let startLoc = null;
   let inverseCTM = null;
@@ -429,16 +436,32 @@ function bindInteraction() {
     if (event.button !== 0 || !el) return;
     const ctm = el.getScreenCTM?.();
     inverseCTM = ctm ? ctm.inverse() : null;
-    dragging = true;
-    stage.classList.add('grabbing');
-    startView = { ...view };
-    startLoc = screenToUser(el, event.clientX, event.clientY);
-    stage.setPointerCapture(event.pointerId);
+    pressed = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      loc: screenToUser(el, event.clientX, event.clientY),
+    };
   });
 
   stage.addEventListener('pointermove', (event) => {
-    if (!dragging || !startView) return;
+    if (!pressed) return;
+    // Released somewhere we never heard about (outside the stage, typically).
+    if (!(event.buttons & 1)) { pressed = null; return; }
     const el = svgEl();
+    if (!dragging) {
+      if (!el) return;
+      if (Math.abs(event.clientX - pressed.clientX) < DRAG_SLOP
+        && Math.abs(event.clientY - pressed.clientY) < DRAG_SLOP) return;
+      // Past the slop this is a pan, not a click. Capture now so the drag keeps
+      // working once the pointer leaves the stage - and, as a bonus, so the
+      // trailing click lands on the stage and is ignored.
+      dragging = true;
+      startView = { ...view };
+      startLoc = pressed.loc;
+      stage.classList.add('grabbing');
+      try { stage.setPointerCapture(pressed.pointerId); } catch (_) { /* ignore */ }
+    }
     let loc;
     if (inverseCTM && el && typeof el.createSVGPoint === 'function') {
       const point = el.createSVGPoint();
@@ -456,6 +479,7 @@ function bindInteraction() {
   });
 
   const end = (event) => {
+    pressed = null;
     if (!dragging) return;
     dragging = false;
     startView = null;

@@ -41,7 +41,7 @@ python3 start.py --checkout       # force this repo instead
 Now in `tests/`. `tests/bootstrap.sh` fetches Node + jsdom into `tests/.node`
 and `tests/node_modules` (both gitignored); `tests/run.sh` starts an isolated
 bridge on port 8788 against `/tmp/opencode/mermaid-tests/workspace`, runs all
-seven suites (247 checks), and tears the bridge down.
+seven suites (250 checks), and tears the bridge down.
 
 Paths are derived from `import.meta.url` / `__file__`, and the bridge URL,
 workspace and ports come from `TEST_PORT`, `TEST_WORKSPACE`, `TEST_BASE`,
@@ -378,6 +378,15 @@ round-trip and the marking now live there — that is the part which would other
 fail silently in the app.
 
 ## Notes that are easy to forget
+
+- **A press in the viewer only becomes a pan once it moves (3px).** Capturing the
+  pointer on `pointerdown` retargets the follow-up `click` to the capturing
+  element, so the node under the cursor never hears it. That silently broke node
+  clicks — links *and* jump-to-source — for as long as the pan handler has
+  existed. The jsdom suites could not catch it: they dispatch a synthetic `click`
+  straight at the node, skipping pointerdown entirely. `smoke.mjs` now asserts the
+  threshold through the pointer-capture stub, which is the closest the harness can
+  get to the real sequence.
 
 - Session reuse: the editor attaches to the **newest** `graph-engineer` session
   whose `location.directory` exactly equals the project root. Exact matching is

@@ -56,8 +56,10 @@ if (window.Range) {
 if (window.Element && !window.Element.prototype.getClientRects) {
   window.Element.prototype.getClientRects = () => emptyRectList;
 }
-// jsdom has no pointer capture; the splitters call it on pointerdown.
-window.Element.prototype.setPointerCapture = function setPointerCapture() {};
+// jsdom has no pointer capture. The splitters use it, and the viewer's pan
+// threshold is asserted through it, so record the calls.
+const pointerCaptures = [];
+window.Element.prototype.setPointerCapture = function setPointerCapture(id) { pointerCaptures.push(id); };
 window.Element.prototype.releasePointerCapture = function releasePointerCapture() {};
 
 const realFetch = globalThis.fetch;
@@ -331,6 +333,37 @@ try {
   check('the panel has a minimum', minimum === '280px', minimum);
   delete bodyEl.getBoundingClientRect;
 } catch (err) { check('agent splitter block', false, err.message); }
+
+// A press in the viewer only becomes a pan once it moves. Capturing the pointer
+// on pointerdown would retarget the following click, so a node would never hear
+// it and neither links nor jump-to-source would work.
+try {
+  const stage = document.getElementById('graph-stage');
+  const press = (type, x, y, buttons = 1) => {
+    const event = new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    event.pointerId = 7;
+    Object.defineProperty(event, 'buttons', { value: buttons });
+    return event;
+  };
+  const captures = () => pointerCaptures.filter((id) => id === 7).length;
+  pointerCaptures.length = 0;
+
+  stage.dispatchEvent(press('pointerdown', 100, 100));
+  stage.dispatchEvent(press('pointermove', 101, 100));   // 1px of jitter
+  check('a press that barely moves is still a click, not a pointer capture',
+    captures() === 0, `captures=${JSON.stringify(pointerCaptures)}`);
+
+  stage.dispatchEvent(press('pointermove', 160, 100));   // 60px: a pan
+  check('a press that moves becomes a pan and captures the pointer',
+    captures() === 1, `captures=${JSON.stringify(pointerCaptures)}`);
+  stage.dispatchEvent(press('pointerup', 160, 100, 0));
+
+  stage.dispatchEvent(press('pointerdown', 300, 200));
+  stage.dispatchEvent(press('pointermove', 301, 200, 0)); // released off-stage
+  stage.dispatchEvent(press('pointermove', 400, 200));    // a later hover
+  check('a release we never heard about does not leave a pan armed',
+    captures() === 1, `captures=${JSON.stringify(pointerCaptures)}`);
+} catch (err) { check('pan threshold block', false, err.message); }
 
 // simulate a user edit (origin +input, which is what typing produces)
 const cm = studio?.editor?.cm;

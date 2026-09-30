@@ -419,7 +419,7 @@ tests/bootstrap.sh    # once: fetch Node + jsdom if you don't already have them
 tests/run.sh
 ```
 
-Seven suites, ~245 checks. `run.sh` starts its own bridge on port 8788 against a
+Seven suites, ~250 checks. `run.sh` starts its own bridge on port 8788 against a
 throwaway workspace, so your live editor and your real project are never touched.
 They cover the editor (boot, tabs, preview, outline, the gap panel, chat
 rendering, cross-file links, both splitters, the model palette, workspace labels
