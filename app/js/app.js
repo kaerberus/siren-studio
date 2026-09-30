@@ -1,4 +1,4 @@
-// app.js — Mermaid Studio: wiring, files, tabs, sync and the Graph Engineer chat.
+// app.js — Siren Studio: wiring, files, tabs, sync and the Graph Engineer chat.
 
 import { bridge, oc, escapeHtml } from './bridge.js';
 import { createEditor } from './editor.js';
@@ -42,7 +42,7 @@ let outlineTimer = null;
 function applyWorkspaceLabels() {
   const name = state.config?.projectName || state.workspace || '';
   $('workspace-label').textContent = name;
-  document.title = name ? `${name} — Mermaid Studio` : 'Mermaid Studio';
+  document.title = name ? `${name} — Siren Studio` : 'Siren Studio';
   const root = $('files-root');
   root.textContent = state.graphsDir === '.' ? `/${name}` : `${name}/${state.graphsDir}`;
   root.title = state.config?.graphsPath || state.workspace || '';
@@ -115,9 +115,9 @@ async function boot() {
   await startAgent(model);
   updateOcStatus(); // the pill can only name the model once the agent has one
 
-  // open the first graph found, if any
-  const first = state.entries.find((e) => e.type === 'file' && e.graph && !e.name.endsWith('.gaps.md'));
-  if (first) openFile(first.path);
+  // open the diagram the URL names, else the last one you had, else the first
+  const first = initialDiagramPath();
+  if (first) openFile(first);
   else setEmptyVisible(true);
 }
 
@@ -455,8 +455,10 @@ function renderNode(node, depth) {
   const frag = document.createDocumentFragment();
   for (const [key, child] of node.children) {
     const collapsed = state.collapsed.has(key);
-    const row = document.createElement('div');
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'tree-item dir';
+    row.setAttribute('aria-expanded', String(!collapsed));
     row.style.paddingLeft = `${6 + depth * 12}px`;
     row.innerHTML = `<svg class="ti-icon" viewBox="0 0 24 24"><path d="${collapsed ? 'M9 6l6 6-6 6' : 'M6 9l6 6 6-6'}"/></svg><span class="ti-name">${escapeHtml(child.name)}</span>`;
     row.onclick = () => {
@@ -468,8 +470,11 @@ function renderNode(node, depth) {
   }
   for (const file of node.files) {
     const isGraph = file.graph && !file.name.endsWith('.gaps.md');
-    const row = document.createElement('div');
-    row.className = `tree-item${isGraph ? ' graph' : ''}${state.active === file.path ? ' active' : ''}`;
+    const active = state.active === file.path;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `tree-item${isGraph ? ' graph' : ''}${active ? ' active' : ''}`;
+    if (active) row.setAttribute('aria-current', 'true');
     row.style.paddingLeft = `${6 + depth * 12}px`;
     const icon = isGraph
       ? '<svg class="ti-icon" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="9" r="2.4"/><circle cx="11" cy="18" r="2.4"/><path d="M8 6.9 15.6 8.4M7.3 8l2.7 7.4M15.8 11.1 12.6 15.9"/></svg>'
@@ -486,23 +491,74 @@ function renderTabs() {
   const host = $('tabs');
   host.innerHTML = '';
   for (const tab of state.tabs) {
-    const el = document.createElement('button');
-    el.className = `tab${state.active === tab.key ? ' active' : ''}`;
-    el.innerHTML = `${tab.dirty ? '<span class="tab-dot"></span>' : ''}<span class="tab-name">${escapeHtml(tab.name)}</span><span class="tab-close">×</span>`;
-    el.onclick = (event) => {
-      if (event.target.classList.contains('tab-close')) { closeTab(tab.key); return; }
-      activateTab(tab.key);
-    };
+    const active = state.active === tab.key;
+    const el = document.createElement('div');
+    el.className = `tab${active ? ' active' : ''}`;
+    // The label activates the tab; the close affordance is its own button so
+    // both are reachable and operable from the keyboard.
+    el.innerHTML = `<button class="tab-main" type="button" aria-current="${active}">`
+      + `${tab.dirty ? '<span class="tab-dot"></span>' : ''}<span class="tab-name">${escapeHtml(tab.name)}</span>`
+      + `</button><button class="tab-close" type="button" aria-label="Close ${escapeHtml(tab.name)}">`
+      + `<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
+    el.querySelector('.tab-main').onclick = () => activateTab(tab.key);
+    el.querySelector('.tab-close').onclick = () => closeTab(tab.key);
     host.appendChild(el);
   }
 }
 
 function findTab(key) { return state.tabs.find((t) => t.key === key); }
 
+// ── which diagram is open ──────────────────────────────────────────────────
+// The URL names the open diagram and the last one is remembered, so a reload —
+// including one triggered from outside, or a link someone pasted — lands back on
+// the diagram you were reading instead of the first one. `<base href="/">` in
+// index.html keeps relative assets working at any depth.
+const LAST_DIAGRAM_KEY = 'ms-last-diagram';
+
+function diagramEntries() {
+  return (state.entries || []).filter((e) => e.type === 'file' && isDiagramPath(e.path));
+}
+
+/** Resolve a URL path or a stored name to a diagram: exact first, then by a
+ *  unique basename (so `/02-render-pipeline.mmd` also finds `graphs/02-…`). */
+function matchDiagramPath(name) {
+  const wanted = String(name || '').replace(/^\/+|\/+$/g, '');
+  if (!wanted) return null;
+  const diagrams = diagramEntries();
+  const exact = diagrams.find((e) => e.path === wanted);
+  if (exact) return exact.path;
+  const base = wanted.split('/').pop().toLowerCase();
+  const hits = diagrams.filter((e) => (e.path.split('/').pop() || '').toLowerCase() === base);
+  return hits.length === 1 ? hits[0].path : null;
+}
+
+function diagramFromUrl() {
+  try { return matchDiagramPath(decodeURIComponent(location.pathname || '/')); }
+  catch (_) { return null; }
+}
+
+/** URL, then whatever was last open, then the first diagram in the folder. */
+function initialDiagramPath() {
+  let stored = '';
+  try { stored = localStorage.getItem(LAST_DIAGRAM_KEY) || ''; } catch (_) { /* private mode */ }
+  return diagramFromUrl() || matchDiagramPath(stored) || (diagramEntries()[0]?.path ?? null);
+}
+
+/** Reflect the open diagram in the URL and remember it, without a reload. */
+function syncDiagramLocation(tab) {
+  const path = tab?.path || '';
+  try { localStorage.setItem(LAST_DIAGRAM_KEY, path); } catch (_) { /* ignore */ }
+  const url = path ? `/${path}` : '/';
+  try {
+    if (decodeURIComponent(location.pathname) !== url) history.replaceState(null, '', url);
+  } catch (_) { /* ignore */ }
+}
+
 function activateTab(key) {
   const tab = findTab(key);
   if (!tab) return;
   state.active = key;
+  syncDiagramLocation(tab);
   resetView(); // each diagram starts fitted
   editor.setValue(tab.content);
   $('editor-title').textContent = tab.name;
@@ -527,6 +583,7 @@ function closeTab(key) {
     if (next) activateTab(next.key);
     else {
       state.active = null;
+      syncDiagramLocation(null);
       editor.setValue('');
       $('editor-title').textContent = 'No file';
       $('status-file').textContent = '—';
@@ -817,7 +874,8 @@ function renderOutline(analysis) {
     return;
   }
   for (const item of items) {
-    const row = document.createElement('div');
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'outline-item';
     row.innerHTML = `<span class="outline-kind">${item.kind}</span><span>${escapeHtml(item.label || item.id)}</span>`;
     row.onmouseenter = () => { highlightNode(item.id); editor.highlightLines(analysis.linesForId(item.id)); };
@@ -1170,9 +1228,13 @@ function wireUI() {
 
   document.querySelectorAll('.side-tab').forEach((tab) => {
     tab.onclick = () => {
-      document.querySelectorAll('.side-tab').forEach((t) => t.classList.remove('active'));
+      document.querySelectorAll('.side-tab').forEach((t) => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
       document.querySelectorAll('.side-panel').forEach((p) => p.classList.remove('active'));
       tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
       $(`panel-${tab.dataset.panel}`).classList.add('active');
     };
   });
@@ -1340,6 +1402,13 @@ function wireUI() {
   $('graph-target').addEventListener('click', (event) => {
     const group = event.target.closest('g.node, g.statediagram-state');
     if (!group) return;
+    // Mermaid wraps a `click`-linked node in a real `<a href>`, so the click has
+    // a default action that navigates the whole app to the diagram path — a full
+    // reload that lands back on the first diagram. Cancel it, and open a tab
+    // instead. A node that only points at an external URL is left to navigate:
+    // that is a deliberate link, not ours to swallow.
+    const href = group.closest('a[href]')?.getAttribute('href') || '';
+    if (!/^(?:https?:|mailto:|#)/i.test(href)) event.preventDefault();
     if (group.dataset.link) { openFile(group.dataset.link); return; }
     const tab = findTab(state.active);
     if (!tab) return;
@@ -1356,6 +1425,12 @@ function wireUI() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => scheduleRender(0), 220);
+  });
+
+  // back/forward through the diagrams you have visited
+  window.addEventListener('popstate', () => {
+    const path = diagramFromUrl();
+    if (path) openFile(path);
   });
 
   // shortcuts
@@ -1547,11 +1622,17 @@ async function openWorkspaceModal() {
       <h3>Open project</h3>
       <p>Pick the project root. Diagrams live in a directory inside it.</p>
       <div class="dir-bar">
-        <button class="mini-btn" id="dir-up" type="button" title="Parent folder">↑</button>
-        <button class="mini-btn" id="dir-home" type="button" title="Home folder">~</button>
+        <button class="mini-btn" id="dir-up" type="button" title="Parent folder" aria-label="Parent folder">
+          <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+        <button class="mini-btn" id="dir-home" type="button" title="Home folder" aria-label="Home folder">
+          <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 10v9h12v-9"/></svg>
+        </button>
         <input id="dir-path" class="dir-path" spellcheck="false" aria-label="Folder path" />
         <button class="mini-btn labeled" id="dir-go" type="button">Go</button>
-        <button class="mini-btn" id="dir-refresh" type="button" title="Refresh">⟳</button>
+        <button class="mini-btn" id="dir-refresh" type="button" title="Refresh" aria-label="Refresh">
+          <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 6M20 5v6h-6"/></svg>
+        </button>
       </div>
       <div class="dir-shortcuts" id="dir-shortcuts"></div>
       <div class="dir-list" id="dir-list"></div>
@@ -1605,7 +1686,8 @@ async function openWorkspaceModal() {
       listEl.innerHTML = '<div class="dir-empty">No sub-folders here. Name one below, or use this folder.</div>';
     }
     for (const entry of data.dirs) {
-      const row = document.createElement('div');
+      const row = document.createElement('button');
+      row.type = 'button';
       row.className = `dir-item${entry.hidden ? ' hidden-dir' : ''}`;
       row.innerHTML = '<svg viewBox="0 0 24 24" class="ti-icon"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'
         + `<span>${escapeHtml(entry.name)}</span>`;
@@ -1775,6 +1857,7 @@ function setStatusMsg(text) {
 function toast(message, kind = '', actions = []) {
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
+  el.setAttribute('role', 'status');
   el.innerHTML = `<div>${escapeHtml(message)}</div>`;
   if (actions.length) {
     const row = document.createElement('div');
@@ -1823,5 +1906,8 @@ window.__mermaidStudio = {
   setModelRef,
   modelEntries,
   composerCopy,
+  matchDiagramPath,
+  initialDiagramPath,
+  diagramFromUrl,
   get blocks() { return state.pendingBlocks; },
 };

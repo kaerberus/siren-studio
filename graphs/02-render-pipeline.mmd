@@ -1,0 +1,40 @@
+flowchart TD
+    Dequeue([Job dequeued]):::start --> Lease{Lease acquired?}:::decision
+    Lease -->|no, already claimed| Drop[Drop duplicate]:::terminal
+    Lease -->|yes| Load[(Load draft payload)]:::data
+    Load --> Found{Draft found?}:::decision
+    Found -->|no| Gone[404 Draft missing]:::error
+    Found -->|yes| Cache{Cache hit?}:::decision
+    Cache -->|yes| Reuse[Reuse cached artifact]:::process
+
+    subgraph Pool["Render worker pool"]
+        direction TB
+        Render[Render diagram]:::external
+        Attempts{Attempts left?}:::decision
+        Backoff[Backoff and requeue]:::async
+        Render -->|timeout or error| Attempts
+        Attempts -->|yes| Backoff
+        Backoff --> Render
+    end
+
+    Cache -->|no| Render
+    Attempts -->|no| DeadLetter[(Dead-letter job)]:::error
+    Render -->|success| Store[(Store artifact)]:::data
+    Reuse --> Store
+    Store --> Publish[Publish result]:::async
+    Publish --> Metrics[Emit metrics]:::filler
+    Metrics --> Done([Job complete]):::terminal
+    Gone --> Done
+    Drop --> Done
+    DeadLetter --> Done
+
+    %% Palette: Okabe–Ito (CVD-safe). `filler` is deliberately outside the palette — grey marks placeholder nodes.
+    classDef start fill:#0072b2,stroke:#004c78,color:#ffffff
+    classDef decision fill:#f0e442,stroke:#8a8000,color:#111111
+    classDef error fill:#c24e00,stroke:#8f3900,stroke-width:2px,color:#ffffff
+    classDef data fill:#009e73,stroke:#006b4e,color:#111111
+    classDef async fill:#cc79a7,stroke:#8f4f72,stroke-dasharray:6 3,color:#111111
+    classDef process fill:#3a3f45,stroke:#8b949e,color:#ffffff
+    classDef terminal fill:#e8e8e8,stroke:#9aa0a6,color:#111111
+    classDef external fill:#56b4e9,stroke:#004c78,color:#111111
+    classDef filler fill:#6e7681,stroke:#484f58,color:#ffffff

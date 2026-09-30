@@ -1,5 +1,5 @@
 /**
- * Mermaid Studio tools for OpenCode.
+ * Siren Studio tools for OpenCode.
  *
  * Exactly two tools, and only because the built-ins genuinely cannot do them:
  *
@@ -58,7 +58,7 @@ async function api(url, route, init) {
     response = await fetch(url + route, init);
   } catch (err) {
     throw new Error(
-      `Mermaid Studio is not reachable at ${url}. Start it with "python3 start.py" `
+      `Siren Studio is not reachable at ${url}. Start it with "python3 start.py" `
       + `from the opencode-mermaid checkout. (${err.message})`,
     );
   }
@@ -95,7 +95,7 @@ export default {
     await ctx.tool.transform((editor) => {
       editor.namespace({
         name: 'graph',
-        description: 'Mermaid diagrams in the workspace open in Mermaid Studio',
+        description: 'Mermaid diagrams in the workspace open in Siren Studio',
       });
 
       const common = { namespace: 'graph', codemode: true };
@@ -148,7 +148,7 @@ export default {
       editor.add({
         name: 'focus',
         description:
-          'Ask the Mermaid Studio editor to open a diagram and bring it to the front. Use it '
+          'Ask the Siren Studio editor to open a diagram and bring it to the front. Use it '
           + 'to show the user the diagram you are talking about. Requires the editor to be open.',
         input: {
           type: 'object',

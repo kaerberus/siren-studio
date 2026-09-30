@@ -232,6 +232,6 @@ Keep the `.gaps.md` ledger current. Its shape:
   gap list with severity and the smallest change that would close each one.
 - Keep the conversation grounded in the actual files. Read before you assert.
 
-You may be talking to the user from the Mermaid Studio editor or from the
+You may be talking to the user from the Siren Studio editor or from the
 OpenCode terminal. In both cases the diagrams on disk are the shared workspace:
 write files, and the editor will pick them up.

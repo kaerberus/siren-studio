@@ -2,19 +2,21 @@ flowchart TD
     Start([Request arrives]):::start --> Valid{Payload valid?}:::decision
     Valid -->|no| Reject[400 Bad request]:::error
     Valid -->|yes| Persist[(Write draft)]:::data
-    Persist --> Worker[Queue render job]:::async
-    Worker --> Render[Render diagram]:::process
-    Render --> Ok[200 OK]:::terminal
-    Render -->|renderer error| Fail[502 Render failed]:::error
+    Persist --> RenderPipeline[["Render pipeline (detail)"]]:::async
+    RenderPipeline --> Ok[200 OK]:::terminal
+    RenderPipeline -->|renderer error| Fail[502 Render failed]:::error
     Reject --> End([Response sent]):::terminal
     Ok --> End
     Fail --> End
 
-    %% Palette: Okabe–Ito (CVD-safe), differentiated by lightness as well as hue.
-    classDef start fill:#0072b2,stroke:#004c78,color:#ffffff
-    classDef decision fill:#f0e442,stroke:#8a8000,color:#111111
-    classDef error fill:#c24e00,stroke:#8f3900,stroke-width:2px,color:#ffffff
-    classDef data fill:#009e73,stroke:#006b4e,color:#111111
-    classDef async fill:#cc79a7,stroke:#8f4f72,stroke-dasharray:6 3,color:#111111
-    classDef process fill:#3a3f45,stroke:#8b949e,color:#ffffff
-    classDef terminal fill:#e8e8e8,stroke:#9aa0a6,color:#111111
+    click RenderPipeline "02-render-pipeline.mmd" "Open the render pipeline detail"
+
+    %% Palette: TEST OVERRIDE — every class is neon pink, so class carries no meaning here.
+    %% The seven class names are kept only so the override is a one-block revert.
+    classDef start fill:#ff2fd0,stroke:#d1009f,color:#111111
+    classDef decision fill:#ff2fd0,stroke:#d1009f,color:#111111
+    classDef error fill:#ff2fd0,stroke:#d1009f,stroke-width:2px,color:#111111
+    classDef data fill:#ff2fd0,stroke:#d1009f,color:#111111
+    classDef async fill:#ff2fd0,stroke:#d1009f,stroke-dasharray:6 3,color:#111111
+    classDef process fill:#ff2fd0,stroke:#d1009f,color:#111111
+    classDef terminal fill:#ff2fd0,stroke:#d1009f,color:#111111

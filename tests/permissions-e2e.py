@@ -219,7 +219,8 @@ try:
     blob = tool_blob(messages)
     text = assistant_text(messages)
 
-    check("graph-engineer can call graph.validate", "graph.validate" in blob or "graph_validate" in blob,
+    check("graph-engineer can call graph.validate",
+          bool(re.search(r"""graph(?:\.|\[\s*["']?)validate""", blob)),
           blob[:100] or "no tool input")
     output = tool_output_text(messages)
     check("graph.validate returned a parser verdict",

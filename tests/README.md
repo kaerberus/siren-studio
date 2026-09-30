@@ -1,7 +1,7 @@
 # Dev suites
 
 Regression coverage for the editor, the bridge and the plugin. **Dev only** —
-neither Node nor jsdom is needed to use Mermaid Studio.
+neither Node nor jsdom is needed to use Siren Studio.
 
 ```sh
 tests/bootstrap.sh    # once: fetch Node + jsdom if you don't have them

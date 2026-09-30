@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mermaid Studio launcher.
+"""Siren Studio launcher.
 
 Starts the local bridge (which serves the editor and proxies OpenCode) and
 opens it in your browser.

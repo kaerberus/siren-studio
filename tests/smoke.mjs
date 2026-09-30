@@ -1,4 +1,4 @@
-// Headless smoke test for the Mermaid Studio frontend.
+// Headless smoke test for the Siren Studio frontend.
 // Dev-only harness: jsdom + the real CodeMirror vendor bundle, mermaid stubbed.
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
@@ -26,6 +26,7 @@ define('document', window.document);
 define('navigator', window.navigator);
 define('localStorage', window.localStorage);
 define('location', window.location);
+define('history', window.history);
 for (const k of ['HTMLElement', 'Element', 'Node', 'Event', 'CustomEvent', 'MutationObserver',
   'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'XMLSerializer',
   'DOMParser', 'Image', 'Blob', 'URL', 'FileReader']) {
@@ -197,7 +198,7 @@ try {
     head.title === state.config.graphsPath,
     `${head.title} vs ${state.config.graphsPath}`);
   check('the browser tab names the project',
-    document.title.startsWith(projectName) && /Mermaid Studio/.test(document.title),
+    document.title.startsWith(projectName) && /Siren Studio/.test(document.title),
     document.title);
   check('the rescan button is named for what it does',
     document.querySelector('#btn-refresh').title === 'Rescan folder',
@@ -212,6 +213,29 @@ try {
   check('rescan leaves the tree rendered',
     document.querySelectorAll('#file-tree .tree-item').length > 0);
 } catch (err) { check('workspace labels block', false, err.message); }
+
+// accessibility floor: navigation rows and the tab close affordance are real
+// controls, so the file tree, outline and tabs are operable from the keyboard.
+try {
+  const treeRow = document.querySelector('#file-tree .tree-item');
+  const outlineRow = document.querySelector('#outline-list .outline-item');
+  check('file-tree rows are keyboard-operable buttons',
+    treeRow?.tagName === 'BUTTON', treeRow?.tagName);
+  check('outline rows are keyboard-operable buttons',
+    outlineRow?.tagName === 'BUTTON', outlineRow?.tagName);
+  check('the active file row is announced',
+    Boolean(document.querySelector('#file-tree .tree-item[aria-current]')));
+  const close = document.querySelector('#tabs .tab .tab-close');
+  check('the tab close is its own button, with a name',
+    close?.tagName === 'BUTTON' && /^Close /.test(close.getAttribute('aria-label') || ''),
+    close?.getAttribute('aria-label'));
+  const activeSideTab = document.querySelector('.side-tab.active');
+  check('the open sidebar tab is announced',
+    activeSideTab?.getAttribute('aria-selected') === 'true');
+  check('icon-only buttons carry accessible names',
+    ['btn-new', 'btn-save', 'btn-export', 'btn-theme', 'toggle-agent', 'btn-present']
+      .every((id) => document.getElementById(id)?.getAttribute('aria-label')));
+} catch (err) { check('accessibility floor block', false, err.message); }
 
 // viewer: sizing + viewBox-driven fit/zoom (mermaid emits width="100%", viewBox)
 try {
@@ -454,12 +478,52 @@ if (cm) {
     const opened = () => state.tabs.some((t) => t.path === 'child.mmd');
     check('the linked file is not open before the click', !opened());
     if (linked) {
-      linked.querySelector('text').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      // Mermaid wraps a linked node in a real <a href>, and the browser would
+      // navigate the app to that path — a full reload. Model it exactly.
+      const anchor = document.createElementNS('http://www.w3.org/2000/svg', 'a');
+      anchor.setAttribute('href', 'child.mmd');
+      linked.parentNode.insertBefore(anchor, linked);
+      anchor.appendChild(linked);
+      const clickEvent = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+      linked.querySelector('text').dispatchEvent(clickEvent);
       await new Promise((r) => setTimeout(r, 400));
+      check('the navigation mermaid would trigger is cancelled',
+        clickEvent.defaultPrevented === true);
       check('clicking a linked node opens the file in a tab',
         opened() && state.active === 'child.mmd', `active=${state.active} opened=${opened()}`);
+      check('the open diagram is reflected in the URL',
+        location.pathname === '/child.mmd', location.pathname);
+      check('and remembered for the next load',
+        localStorage.getItem('ms-last-diagram') === 'child.mmd',
+        localStorage.getItem('ms-last-diagram'));
     }
   } catch (err) { check('cross-file link block', false, err.message); }
+
+// which diagram to open: URL first, then the remembered one, then the first
+try {
+  check('a URL path resolves to the diagram',
+    studio.matchDiagramPath('/child.mmd') === 'child.mmd',
+    studio.matchDiagramPath('/child.mmd'));
+  check('a bare basename resolves too',
+    studio.matchDiagramPath('child.mmd') === 'child.mmd');
+  check('an unknown path resolves to nothing',
+    studio.matchDiagramPath('/nope.mmd') === null);
+  check('the URL wins over the remembered diagram', (() => {
+    history.replaceState(null, '', '/example.mmd');
+    localStorage.setItem('ms-last-diagram', 'child.mmd');
+    return studio.initialDiagramPath() === 'example.mmd';
+  })(), studio.initialDiagramPath());
+  check('with no URL it falls back to the remembered diagram', (() => {
+    history.replaceState(null, '', '/');
+    localStorage.setItem('ms-last-diagram', 'child.mmd');
+    return studio.initialDiagramPath() === 'child.mmd';
+  })(), studio.initialDiagramPath());
+  check('and with neither, to the first diagram', (() => {
+    history.replaceState(null, '', '/');
+    localStorage.removeItem('ms-last-diagram');
+    return studio.initialDiagramPath() === 'example.mmd';
+  })(), studio.initialDiagramPath());
+} catch (err) { check('initial diagram block', false, err.message); }
 }
 
 // the composer advertises steering while a turn is running
@@ -521,29 +585,48 @@ try {
   check('palette lists every model', count() > 20, `${count()} rows`);
 
   const input = palette.querySelector('#palette-input');
-  input.value = 'deepseek';
-  input.dispatchEvent(new window.Event('input'));
-  await new Promise((r) => setTimeout(r, 80));
-  const labels = [...palette.querySelectorAll('.palette-item .palette-name')].map((el) => el.textContent);
-  check('search filters the list', labels.length > 0 && labels.every((l) => /deepseek/i.test(l)),
-    `${labels.length}: ${labels.slice(0, 3).join(', ')}`);
+  const search = async (term) => {
+    input.value = term;
+    input.dispatchEvent(new window.Event('input'));
+    await new Promise((r) => setTimeout(r, 80));
+    return [...palette.querySelectorAll('.palette-item .palette-name')].map((el) => el.textContent);
+  };
 
-  input.value = 'no-such-model-xyz';
-  input.dispatchEvent(new window.Event('input'));
-  await new Promise((r) => setTimeout(r, 80));
+  // The palette matches on provider + label + key, and the catalogue changes
+  // under us (OpenRouter mirrors appear and sort first), so assert against the
+  // app's own entries rather than assuming the term appears in the name.
+  const entries = studio.modelEntries();
+  const term = 'deepseek';
+  const expected = entries
+    .filter((e) => `${e.provider} ${e.label} ${e.key}`.toLowerCase().includes(term))
+    .map((e) => e.label);
+  const labels = await search(term);
+  check('search filters to the app\'s own matches',
+    labels.length > 0 && labels.length < entries.length
+      && labels.every((l) => expected.includes(l)),
+    `${labels.length} rows, ${expected.length} expected`);
+
+  await search('no-such-model-xyz');
   check('empty search state', /No model matches/.test(palette.textContent));
 
-  input.value = 'deepseek-flash';
-  input.dispatchEvent(new window.Event('input'));
-  await new Promise((r) => setTimeout(r, 80));
-  palette.querySelector('.palette-item').click();
+  // Pick the base deepseek-flash model by its own label, not "the first row":
+  // a provider mirror can sort earlier and would silently test a different model.
+  await search('deepseek-flash');
+  const target = entries.find((e) => e.key === 'deepseek/deepseek-flash');
+  check('the default model is in the palette', Boolean(target), 'deepseek/deepseek-flash');
+  const rows = [...palette.querySelectorAll('.palette-item')];
+  const row = target
+    ? rows.find((r) => r.querySelector('.palette-name').textContent === target.label)
+    : null;
+  check('the palette offers the default model', Boolean(row), target?.label || 'no target');
+  (row || rows[0]).click();
   await new Promise((r) => setTimeout(r, 500));
   check('picking closes the palette', !document.querySelector('.palette'));
   check('picking persists the choice',
     /deepseek\/deepseek-flash/.test(localStorage.getItem('ms-model') || ''),
     localStorage.getItem('ms-model'));
   check('pill updates to the chosen model',
-    /DeepSeek V4\.1 Flash/.test(document.querySelector('#oc-status').textContent),
+    document.querySelector('#oc-status').textContent.includes(target?.label || '\u0000'),
     document.querySelector('#oc-status').textContent.trim());
   check('panel select stays in sync',
     document.querySelector('#agent-model').value === (localStorage.getItem('ms-model') || ''),

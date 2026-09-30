@@ -1,4 +1,4 @@
-# Mermaid Studio
+# Siren Studio
 
 A local, web-based Mermaid editor with a live graph viewer and an **OpenCode
 "Graph Engineer" agent** you talk to from the editor, to model systems and hunt

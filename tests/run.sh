@@ -85,6 +85,8 @@ run() {
   else
     printf 'FAILED\n'
     printf '%s\n' "$out" | grep -aE '^FAIL' | head -5 | sed 's/^/    /'
+    printf '%s\n' "$out" > "$TEST_ROOT/$name.fail.log"
+    printf '    full output: %s\n' "$TEST_ROOT/$name.fail.log"
     failed=$((failed + 1))
   fi
 }
