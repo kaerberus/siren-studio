@@ -1,12 +1,13 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-30T12:02:12Z",
+  "generatedAt": "2026-09-30T12:39:06Z",
   "title": "Design System: Siren Studio",
   "extensions": {
     "colorMeta": {
       "cobalt-signal": { "role": "primary", "displayName": "Cobalt Signal", "canonical": "#7c9cff", "tonalRamp": ["#030034", "#0d116c", "#233690", "#3f58b5", "#5e7bdb", "#809fff", "#b3c8ff", "#e8eeff"] },
-      "cobalt-signal-deep": { "role": "primary", "displayName": "Cobalt Signal Deep", "canonical": "#5c82f5", "tonalRamp": ["#020035", "#0a0079", "#1b319e", "#3655c4", "#5479eb", "#7da0ff", "#b2c8ff", "#e7eeff"] },
-      "cobalt-signal-light": { "role": "primary", "displayName": "Cobalt Signal (Light)", "canonical": "#3b6fe0", "tonalRamp": ["#00042e", "#001866", "#0533a0", "#2657c6", "#467bed", "#75a3ff", "#aecaff", "#e6efff"] },
+      "cobalt-signal-deep": { "role": "primary", "displayName": "Cobalt Signal Deep", "canonical": "#4668d8", "tonalRamp": ["#020035", "#0b0178", "#1c319d", "#3655c3", "#5479ea", "#7ea0ff", "#b2c8ff", "#e7eeff"] },
+      "cobalt-signal-deep-hover": { "role": "primary", "displayName": "Cobalt Signal Deep (Hover)", "canonical": "#3f61cc", "tonalRamp": ["#020035", "#090676", "#1b339a", "#3656c0", "#557ae7", "#7da0ff", "#b2c8ff", "#e7eeff"] },
+      "cobalt-signal-light": { "role": "primary", "displayName": "Cobalt Signal (Light)", "canonical": "#3366d9", "tonalRamp": ["#000430", "#001768", "#0532a2", "#2556c8", "#457bef", "#75a2ff", "#aec9ff", "#e6efff"] },
       "void-ink": { "role": "neutral", "displayName": "Void Ink", "canonical": "#0b0e14", "tonalRamp": ["#080b11", "#22252c", "#3e4249", "#5d6169", "#7e828b", "#a1a5ae", "#c5c9d2", "#eaeff8"] },
       "panel-ink": { "role": "neutral", "displayName": "Panel Ink", "canonical": "#0e1219", "tonalRamp": ["#080b12", "#21252d", "#3d424b", "#5c616a", "#7d838c", "#a0a5af", "#c3c9d4", "#e9eff9"] },
       "raised-ink": { "role": "neutral", "displayName": "Raised Ink", "canonical": "#11151d", "tonalRamp": ["#080b13", "#21252e", "#3d424c", "#5c616b", "#7d828d", "#9fa5b0", "#c3c9d5", "#e9effb"] },
@@ -17,7 +18,8 @@
       "hairline-rule": { "role": "neutral", "displayName": "Hairline Rule", "canonical": "#1a212c", "tonalRamp": ["#060b15", "#1e2531", "#3b424f", "#59626f", "#7a8391", "#9ca6b4", "#c0cad9", "#e5efff"] },
       "graphite-ink": { "role": "neutral", "displayName": "Graphite Ink", "canonical": "#e6edf3", "tonalRamp": ["#070c10", "#21262a", "#3d4348", "#5c6267", "#7d8389", "#9fa6ac", "#c3cad0", "#e8eff5"] },
       "dim-annotation": { "role": "neutral", "displayName": "Dim Annotation", "canonical": "#8b98ab", "tonalRamp": ["#040b18", "#1b2635", "#374353", "#566274", "#778396", "#99a6b9", "#bdcade", "#e5efff"] },
-      "faint-annotation": { "role": "neutral", "displayName": "Faint Annotation", "canonical": "#5d6878", "tonalRamp": ["#040b17", "#1c2633", "#384351", "#576272", "#788394", "#9aa6b7", "#becadc", "#e5efff"] },
+      "faint-annotation": { "role": "neutral", "displayName": "Faint Annotation", "canonical": "#74808f", "tonalRamp": ["#040c16", "#1c2632", "#384350", "#576271", "#778493", "#9aa6b6", "#bdcbdb", "#e4f0ff"] },
+      "faint-annotation-light": { "role": "neutral", "displayName": "Faint Annotation (Light)", "canonical": "#636c7a", "tonalRamp": ["#050b15", "#1e2531", "#3a424f", "#596270", "#7a8391", "#9ca6b5", "#c0cada", "#e5efff"] },
       "code-well": { "role": "neutral", "displayName": "Code Well", "canonical": "#0a0d13", "tonalRamp": ["#080b11", "#22252c", "#3e424a", "#5d6169", "#7e828b", "#a1a5ae", "#c5c9d2", "#eaeff8"] },
       "paper-mist": { "role": "neutral", "displayName": "Paper Mist", "canonical": "#eef1f5", "tonalRamp": ["#090b0e", "#232528", "#404245", "#5f6165", "#808286", "#a2a5a9", "#c6c9cd", "#eceff3"] },
       "paper-white": { "role": "neutral", "displayName": "Paper White", "canonical": "#ffffff", "tonalRamp": ["#0b0b0b", "#252525", "#424242", "#616161", "#828282", "#a5a5a5", "#c9c9c9", "#eeeeee"] },
@@ -30,7 +32,9 @@
       "title": { "displayName": "Title", "purpose": "Brand name, agent name, modal headings." },
       "body": { "displayName": "Body", "purpose": "Chat messages, ledger entries, dialog copy. Dense by default." },
       "label": { "displayName": "Label", "purpose": "Uppercase, tracked panel headings and control labels." },
-      "mono": { "displayName": "Mono", "purpose": "Anything literal: editor source, paths, node ids, status readouts." }
+      "mono": { "displayName": "Mono", "purpose": "Anything literal: editor source, paths, node ids, status readouts." },
+      "small": { "displayName": "Small", "purpose": "Dense controls below body text: tabs, side tabs, quick prompts, chips." },
+      "nano": { "displayName": "Nano", "purpose": "Smallest tier: outline-kind badges and compact role labels." }
     },
     "shadows": [
       { "name": "floating-surface-dark", "value": "0 14px 40px rgba(0, 0, 0, 0.45)", "purpose": "Menus, modal, and toasts on dark; detaches a dismissible layer from the page." },
@@ -57,7 +61,7 @@
       "refersTo": "button-primary",
       "description": "The one filled button, used once per surface (Send, modal Confirm).",
       "html": "<button class=\"ds-btn-primary\">Send</button>",
-      "css": ".ds-btn-primary { background: var(--accent-strong, #5c82f5); color: #fff; padding: 6px 16px; border-radius: 7px; border: 1px solid var(--accent-strong, #5c82f5); font-family: inherit; font-size: 12.5px; font-weight: 500; line-height: 1.55; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; } .ds-btn-primary:hover { background: var(--accent, #7c9cff); border-color: var(--accent, #7c9cff); } .ds-btn-primary:focus-visible { outline: none; border-color: var(--accent, #7c9cff); box-shadow: none; } .ds-btn-primary:disabled { opacity: 0.5; cursor: default; }"
+      "css": ".ds-btn-primary { background: var(--accent-strong, #4668d8); color: #fff; padding: 6px 16px; border-radius: 7px; border: 1px solid var(--accent-strong, #4668d8); font-family: inherit; font-size: 12.5px; font-weight: 500; line-height: 1.55; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; } .ds-btn-primary:hover { background: var(--accent-strong-hover, #3f61cc); border-color: var(--accent-strong-hover, #3f61cc); } .ds-btn-primary:focus-visible { outline: none; border-color: var(--accent, #7c9cff); box-shadow: none; } .ds-btn-primary:disabled { opacity: 0.5; cursor: default; }"
     },
     {
       "name": "Icon Button",
@@ -128,6 +132,7 @@
     ],
     "rules": [
       { "name": "The One Signal Rule", "body": "Cobalt Signal marks one current thing per region — the focused field, the open tab, the selected node. It is never a background wash, never a gradient, and never used to decorate a static element.", "section": "colors" },
+      { "name": "The Deep-Fill Rule", "body": "The only filled surface that carries white text is Cobalt Signal Deep. It never lightens toward the bright accent on interaction, because that would drop the label to 2.6:1; hover deepens it instead (5.54:1).", "section": "colors" },
       { "name": "The Ink Ladder Rule", "body": "Depth is expressed by stepping the surface ramp (Code/Well → Void → Panel → Raised), one step per layer, and never by stacking two borders or two shadows. If a surface needs to feel higher, step the ramp; do not reach for the shadow token.", "section": "colors" },
       { "name": "The Two-Register Rule", "body": "Sans carries the interface; mono carries anything literal — a path, a filename, a node id, a version, a source line. If a value could be pasted into a terminal unchanged, it is set in mono.", "section": "typography" },
       { "name": "The No-Display-Type Rule", "body": "Type never exceeds 18px and never uses a display or editorial face. Size is not how this interface creates hierarchy; position, the ink ramp, and uppercase labels are.", "section": "typography" },
@@ -138,10 +143,10 @@
       "Do express depth with the ink ladder (Code/Well → Void → Panel → Raised) before reaching for the shadow token.",
       "Do reserve Cobalt Signal for exactly one current thing per region — focus, selection, active tab, live connection.",
       "Do set anything literal (paths, filenames, node ids, source, status readouts) in the mono face, and interface chrome in sans.",
-      "Do keep radii under 11px (master 10px, controls 7px) and pills at 999px.",
+      "Do use the documented radius scale (3/4/5/6/7/8/10px, pills 999px) — master 10px, controls 7px.",
       "Do use 1px Rule Line / Hairline Rule borders and change only border-color on focus, never a glow or outer ring.",
       "Do keep text at or below 18px and carry hierarchy with position, uppercase 11px labels, and ink weight.",
-      "Do keep both themes fully realized; the light theme remaps surfaces to Paper Mist / Paper White and swaps the accent to #3b6fe0 for contrast."
+      "Do keep both themes fully realized; the light theme remaps surfaces to Paper Mist / Paper White and swaps the accent to #3366d9 for contrast."
     ],
     "donts": [
       "Don't use Cobalt Signal as a background wash, gradient, or decoration — it is a state color, not a brand fill.",

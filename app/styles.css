@@ -14,8 +14,12 @@
   --agent-w: 370px;
   --editor-w: 50%;
   --splitter-w: 5px;
+  /* The one filled button uses a deeper cobalt than the selection accent, so
+     white text clears AA on it; it deepens again on hover rather than lifting
+     to the bright accent, which would drop the text below AA. */
   --accent: #7c9cff;
-  --accent-strong: #5c82f5;
+  --accent-strong: #4668d8;
+  --accent-strong-hover: #3f61cc;
   --ok: #3fb950;
   --warn: #d29922;
   --err: #f85149;
@@ -43,7 +47,7 @@ html[data-theme="dark"] {
   --border-soft: #1a212c;
   --text: #e6edf3;
   --text-dim: #8b98ab;
-  --text-faint: #5d6878;
+  --text-faint: #74808f;
   --shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
   --code-bg: #0a0d13;
 }
@@ -59,11 +63,12 @@ html[data-theme="light"] {
   --border-soft: #e6ebf2;
   --text: #182230;
   --text-dim: #5d6b7e;
-  --text-faint: #8a97a8;
+  --text-faint: #636c7a;
   --shadow: 0 14px 40px rgba(30, 40, 60, 0.16);
   --code-bg: #ffffff;
-  --accent: #3b6fe0;
+  --accent: #3366d9;
   --accent-strong: #2f5cc4;
+  --accent-strong-hover: #3366d9;
   --syn-keyword: #cf222e;
   --syn-node: #0550ae;
   --syn-string: #0a3069;
@@ -545,7 +550,7 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
   padding: 6px 16px; border-radius: 7px; border: 1px solid var(--accent-strong);
   background: var(--accent-strong); color: #fff; font-size: 12.5px; font-weight: 500;
 }
-.primary-btn:hover { background: var(--accent); }
+.primary-btn:hover { background: var(--accent-strong-hover); }
 .primary-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* ── status bar ───────────────────────────────────────────────────────── */
@@ -614,7 +619,7 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 .dir-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .dir-foot .cancel { padding: 7px 14px; border-radius: 7px; font-size: 12.5px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
 .dir-foot .confirm { padding: 7px 14px; border-radius: 7px; font-size: 12.5px; background: var(--accent-strong); border: 1px solid var(--accent-strong); color: #fff; }
-.dir-foot .confirm:hover { background: var(--accent); }
+.dir-foot .confirm:hover { background: var(--accent-strong-hover); }
 .modal-actions .cancel { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
 .modal-actions .confirm { background: var(--accent-strong); border: 1px solid var(--accent-strong); color: #fff; }
 

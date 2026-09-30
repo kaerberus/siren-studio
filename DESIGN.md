@@ -12,10 +12,12 @@ colors:
   hairline-rule: "#1a212c"
   graphite-ink: "#e6edf3"
   dim-annotation: "#8b98ab"
-  faint-annotation: "#5d6878"
+  faint-annotation: "#74808f"
+  faint-annotation-light: "#636c7a"
   cobalt-signal: "#7c9cff"
-  cobalt-signal-deep: "#5c82f5"
-  cobalt-signal-light: "#3b6fe0"
+  cobalt-signal-deep: "#4668d8"
+  cobalt-signal-deep-hover: "#3f61cc"
+  cobalt-signal-light: "#3366d9"
   signal-green: "#3fb950"
   signal-amber: "#d29922"
   signal-red: "#f85149"
@@ -49,9 +51,25 @@ typography:
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.55
+  small:
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.5
+  nano:
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    fontSize: "10px"
+    fontWeight: 500
+    lineHeight: 1.2
+    letterSpacing: "0.5px"
 rounded:
-  md: "10px"
+  xxs: "3px"
+  xs: "4px"
+  compact: "5px"
+  small: "6px"
   sm: "7px"
+  base: "8px"
+  md: "10px"
   pill: "999px"
 spacing:
   xs: "4px"
@@ -65,7 +83,7 @@ components:
     rounded: "{rounded.sm}"
     padding: "6px 16px"
   button-primary-hover:
-    backgroundColor: "{colors.cobalt-signal}"
+    backgroundColor: "{colors.cobalt-signal-deep-hover}"
   button-primary-disabled:
     backgroundColor: "{colors.cobalt-signal-deep}"
     textColor: "#ffffff"
@@ -145,11 +163,16 @@ The palette is almost entirely a neutral ink ramp; one cobalt signal and three
 semantic lamps carry every meaningful color in the product.
 
 ### Primary
-- **Cobalt Signal** (`#7c9cff`): The one accent. Marks the active tab, the
-  focused field border, the current selection, link-styled graph nodes, the
-  connection lamp, and the caret. In the light theme the same role is served by
-  its deeper sibling **Cobalt Signal (Light)** (`#3b6fe0`), because the
-  periwinkle does not hold contrast on paper.
+- **Cobalt Signal** (`#7c9cff`): The one accent, used for text and thin strokes
+  — the active tab, the focused field border, the current selection,
+  link-styled graph nodes, the connection lamp, and the caret. It is never a
+  filled surface behind text.
+- **Cobalt Signal Deep** (`#4668d8`), deepening to `#3f61cc` on hover: The
+  filled primary button — the single place white text sits on the accent. It is
+  deliberately deeper than Cobalt Signal so the label clears AA (4.96:1;
+  5.54:1 on hover); the bright accent would put it at 2.6:1.
+- **Cobalt Signal (Light)** (`#3366d9`): The light theme's accent for both text
+  and the primary fill, because the periwinkle does not hold contrast on paper.
 
 ### Semantic Signals
 - **Signal Green** (`#3fb950`): Connection online, validation passed, a wired
@@ -163,8 +186,9 @@ semantic lamps carry every meaningful color in the product.
 - **Graphite Ink** (`#e6edf3`): Primary text on dark — near-white, never pure
   white, so the ladder below it stays legible.
 - **Dim Annotation** (`#8b98ab`): Secondary text, inactive icons, control labels.
-- **Faint Annotation** (`#5d6878`): Tertiary text, panel headings, placeholders,
-  gutter line numbers, status bar.
+- **Faint Annotation** (`#74808f` dark / `#636c7a` light): Tertiary text, panel
+  headings, placeholders, gutter line numbers, status bar — kept at ≥4.5:1 on
+  every surface in both themes.
 - **Void Ink** (`#0b0e14`): The app background, beneath everything.
 - **Well Ink** (`#080a0f`) and **Code Well** (`#0a0d13`): Recessed surfaces —
   inputs, the palette list, inline code, the editor gutter and canvas.
@@ -183,6 +207,10 @@ semantic lamps carry every meaningful color in the product.
 **The One Signal Rule.** Cobalt Signal marks one current thing per region —
 the focused field, the open tab, the selected node. It is never a background
 wash, never a gradient, and never used to decorate a static element.
+
+**The Deep-Fill Rule.** The only filled surface that carries white text is
+Cobalt Signal Deep. It never lightens toward the bright accent on interaction,
+because that would drop the label to 2.6:1; hover deepens it instead (5.54:1).
 
 **The Ink Ladder Rule.** Depth is expressed by stepping the surface ramp
 (Code/Well → Void → Panel → Raised), one step per layer, and never by stacking
@@ -212,6 +240,10 @@ low-contrast in personality — neither voice performs.
   field labels ("Model"), file-attachment names. Always uppercase, always tracked.
 - **Mono** (400, 13px, 1.55): The editor body (CodeMirror), file paths, the
   workspace root, status-bar readouts, model costs, inline code.
+- **Small** (400, 12px, 1.5): Dense controls that sit below body text — tabs,
+  side tabs, quick prompts, chip labels.
+- **Nano** (500, 10px, 0.5px tracking, uppercase): The smallest tier — outline
+  kind badges and compact role labels.
 
 ### Named Rules
 **The Two-Register Rule.** Sans carries the interface; mono carries anything
@@ -267,12 +299,14 @@ place two floating shadows in the same stack. One float, one shadow, one hairlin
 
 ## Shapes
 
-The form language is the rounded workbench rectangle: a master radius of
-**10px** for dialogs and large containers, a **7px** working radius for buttons,
-inputs, and message bubbles, and incidental 5–8px radii on small rows, tabs, and
-icon buttons. Pills (status, quick prompts, lint badge) use a full **999px**
-radius. There are no sharp corners and no large soft curves; radii stay under
-11px so the interface reads as precise rather than friendly.
+The form language is the rounded workbench rectangle, on a documented scale of
+**3 / 4 / 5 / 6 / 7 / 8 / 10px** plus a full **999px** pill. The master radius
+is **10px** for dialogs and large containers; **7px** is the working radius for
+buttons, inputs, and message bubbles; **8px** covers tabs and icon buttons;
+**6px** small rows and menu items; and 3–5px are reserved for tight decorative
+insets (the splitter highlight, outline-kind badges). Pills (status, quick
+prompts, lint badge) use 999px. Radii stay under 11px so the interface reads as
+precise rather than friendly.
 
 Borders are always 1px and always the Rule Line or Hairline Rule token; the
 only dashed border in the system is the outline of an unwired ghost button
@@ -348,13 +382,14 @@ never underlines or bolds on hover — it only changes ink and fill.
   focus, selection, active tab, live connection.
 - **Do** set anything literal (paths, filenames, node ids, source, status
   readouts) in the mono face, and interface chrome in sans.
-- **Do** keep radii under 11px (master 10px, controls 7px) and pills at 999px.
+- **Do** use the documented radius scale (3/4/5/6/7/8/10px, pills 999px) —
+  master 10px, controls 7px.
 - **Do** use 1px Rule Line / Hairline Rule borders and change only border-color
   on focus, never a glow or outer ring.
 - **Do** keep text at or below 18px and carry hierarchy with position, uppercase
   11px labels, and ink weight.
 - **Do** keep both themes fully realized; the light theme remaps surfaces to
-  Paper Mist / Paper White and swaps the accent to `#3b6fe0` for contrast.
+  Paper Mist / Paper White and swaps the accent to `#3366d9` for contrast.
 
 ### Don't:
 - **Don't** use Cobalt Signal as a background wash, gradient, or decoration —
