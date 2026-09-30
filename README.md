@@ -4,7 +4,7 @@
 You write a line like:
 
 ```text
-flowchart LR; input[dough] --> process{oven} --> output[bread]
+input[dough] --> process{oven} --> output[bread]
 ```
 
 And it renders as a flowchart:
