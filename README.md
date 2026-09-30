@@ -1,11 +1,11 @@
 # Siren Studio
 
 [Mermaid.js](https://mermaid.js.org) is a way to draw diagrams from simple code.
-You write a few lines, like `dough --> oven --> bread`, and it renders a
-flowchart. Because the diagram stays code, a large language model can read and
-change it as easily as you can, which makes it a natural fit for **agentic
-coding**: you plan visually, and the plan is something the model genuinely
-understands.
+You write a few lines, like `Dough[Dough] --> Oven[Oven] --> Bread[Bread]`, and
+it renders a flowchart. Because the diagram stays code, a large language model
+can read and change it as easily as you can, which makes it a natural fit for
+**agentic coding**: you plan visually, and the plan is something the model
+genuinely understands.
 
 **Siren Studio** lets you edit those diagrams without a command line: Mermaid on
 one side, the drawn picture on the other, updating as you type. It runs on your
