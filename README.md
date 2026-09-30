@@ -32,6 +32,14 @@ The diagram files are the shared state: the agent edits them, the editor
 live-reloads. The editor is the only surface for graph work — the graph is a
 visual artifact and the loop is *look → point → adjust*.
 
+## Screenshots
+
+![The Siren Studio editor: Mermaid source, the live graph, and the Graph Engineer panel](docs/screenshots/editor.png)
+
+| The design-gap ledger beside the graph | The light theme |
+| --- | --- |
+| ![The design-gap ledger panel](docs/screenshots/gaps.png) | ![The light theme](docs/screenshots/light.png) |
+
 ## Quick start
 
 ```sh
