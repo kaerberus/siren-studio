@@ -552,12 +552,18 @@ function removeLinkGlyph(el) {
  * simply gets no glyph.
  */
 function attachLinkGlyph(el) {
-  const text = el.querySelector('text');
-  if (!text || typeof text.getBBox !== 'function') return;
+  // The interactive preview runs Mermaid with htmlLabels on, so node labels are
+  // an HTML <foreignObject> wrapped in `g.label`, not a <text> — probing for a
+  // <text> finds nothing on most diagram types and the glyph never attaches.
+  // Measure the label group itself; a <text> label (the export path) is measured
+  // through its parent, since a <text> cannot hold a <g>.
+  const label = el.querySelector('g.label') || el.querySelector('text');
+  if (!label || typeof label.getBBox !== 'function') return;
   let box;
-  try { box = text.getBBox(); } catch (_) { return; }
+  try { box = label.getBBox(); } catch (_) { return; }
   if (!box || !box.width) return;
-  const container = text.closest('g.label') || text.parentNode || el;
+  const container = label.tagName && label.tagName.toLowerCase() === 'text'
+    ? (label.parentNode || el) : label;
   const glyph = document.createElementNS(SVG_NS, 'g');
   glyph.setAttribute('class', 'node-link-glyph');
   glyph.setAttribute('aria-hidden', 'true');
