@@ -23,3 +23,6 @@ tests/package-lock.json
 # Impeccable live mode: commit the config, ignore session state
 .impeccable/live/*
 !.impeccable/live/config.json
+
+# Scratch screenshots (design review captures)
+screenshots/
