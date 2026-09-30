@@ -31,5 +31,6 @@ docs/TODO.md
 # Working diagrams are local state; shipped samples live in example-graphs/
 graphs/
 
-# Design system notes (kept local)
+# Impeccable product/design notes (kept local, dev-only)
 DESIGN.md
+PRODUCT.md
