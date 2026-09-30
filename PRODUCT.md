@@ -54,9 +54,9 @@ both Mermaid and CodeMirror are vendored.
   survives.
 - A `*.gaps.md` ledger sits beside each diagram and holds the open design-gap
   questions.
-- Development happens from the repo checkout: `python3 install-agent.py`
-  installs the global agent, skill and plugin; `python3 start.py` launches, and
-  `python3 start.py --check` reports what is missing.
+- Development happens from the repo checkout: `python3 start.py` launches, and
+  `python3 start.py --install` installs (or refreshes) the global Graph Engineer
+  agent, skill and plugin; `python3 start.py --check` reports what is missing.
 
 ## Capabilities and Constraints
 
@@ -106,7 +106,9 @@ both Mermaid and CodeMirror are vendored.
   is local state and is not committed).
 - `agent/`, `agent/skills/graph-engineering/`, `agent/plugins/graph-tools.js` and
   `install-agent.py` — the agent, its skill references and its install path.
-- `bridge/doctor.py` — the `--check` setup doctor (Python, no Node).
+- `bridge/doctor.py` — the `--check` setup doctor, and `bridge/agent_install.py`
+  — the shared installer behind `start.py --install` and `install-agent.py`
+  (both Python, no Node).
 
 Absences future work must not fabricate: there are no testimonials, customers,
 press, benchmarks, or user-research findings. There is no `LICENSE` file and no

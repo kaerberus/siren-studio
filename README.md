@@ -1,36 +1,20 @@
 # Siren Studio
 
-A local, web-based Mermaid editor with a live graph viewer and an **OpenCode
-"Graph Engineer" agent** you talk to from the editor, to model systems and hunt
-down design gaps.
+[Mermaid.js](https://mermaid.js.org) is a way to draw diagrams from plain text.
+You write a few lines — `A[Start] --> B{Ready?}` — and it renders a flowchart.
+Because the diagram stays text, a large language model can read and change it as
+easily as you can, which makes it a natural fit for **agentic coding**: you plan
+visually, and the plan is something the model genuinely understands.
 
-The graph is **design intent**. You and the agent agree it in the editor; code is
-written against it; the agent updates it deliberately, with your approval, when
-reality drifts.
+**Siren Studio** lets you edit those diagrams without a command line: Mermaid on
+one side, the drawn picture on the other, updating as you type. It runs on your
+own machine — Python 3 and a browser, no build step — and the diagrams are
+ordinary files next to your code.
 
-No Node, no bundler, no build step. Python 3 (stdlib only) serves the app and
-bridges to the OpenCode API; Mermaid and CodeMirror are vendored so it works
-offline.
-
-```
-┌──────────────── browser: app/ ─────────────────┐
-│  code editor  │  live graph  │  Graph Engineer │
-└───────────────────────┬─────────────────────────┘
-                        │ same-origin
-┌─────────────── bridge/server.py ────────────────┐
-│  /        serve the editor                       │
-│  /oc/*    reverse-proxy OpenCode (+auth, SSE)    │
-│  /fs/*    read/list/write diagrams               │
-│  /events  file-change + focus stream (SSE)       │
-└───────────────────────┬─────────────────────────┘
-                        │  the same files on disk
-                        ▼
-        opencode agent "graph-engineer"  →  *.mmd + *.gaps.md
-```
-
-The diagram files are the shared state: the agent edits them, the editor
-live-reloads. The editor is the only surface for graph work — the graph is a
-visual artifact and the loop is *look → point → adjust*.
+It also integrates with **OpenCode**, so you can bring in its agents (running on
+local or cloud AI) to help design the diagrams in the first place, and then to
+find the gaps in those designs — missing error paths, open questions, and places
+where the picture and the code have drifted apart.
 
 ## Screenshots
 
@@ -42,22 +26,16 @@ visual artifact and the loop is *look → point → adjust*.
 
 ## Quick start
 
+Needs Python 3.9+ and [OpenCode](https://opencode.ai) running.
+
 ```sh
-# 1. install the Graph Engineer agent + skill globally
-python3 install-agent.py
-
-# 2. check your setup — verifies the agent, OpenCode and vendored assets
-python3 start.py --check
-
-# 3. start the editor (opens your browser)
-python3 start.py
-
-# open a specific project
-python3 start.py --project ~/code/my-project
-
-# ignore the last project and open this checkout
-python3 start.py --checkout
+git clone https://github.com/kaerberus/siren-studio && cd siren-studio
+python3 start.py --install   # install the Graph Engineer, then open the editor
 ```
+
+From then on it's just `python3 start.py`. If the Graph Engineer shows as
+offline, restart OpenCode — it reads its agent list at startup. If anything is
+missing, `python3 start.py --check` says what and how to fix it.
 
 The editor opens on a **project root**, and diagrams live in a directory inside
 it (default `graphs/`). The project root is the OpenCode session Location, so
@@ -65,12 +43,21 @@ diagram paths read as `graphs/03-payment.mmd` for you and for the agent.
 
 With no arguments, `start.py` reopens **the last project you used** and falls back
 to this checkout the first time (or if that project is gone). It names the project
-it picked, and where it got it from, in the startup banner; `--checkout` forces
-this repo. The project name is also echoed in the topbar, the file-tree head and
-the browser tab, so which folder you are on is never a guess.
+it picked, and where it got it from, in the startup banner. The project name is
+also echoed in the topbar, the file-tree head and the browser tab, so which
+folder you are on is never a guess.
 
-Requires the OpenCode service to be running (it normally is while OpenCode is
-open: `opencode service status`).
+### Commands
+
+| Command | What it does |
+| --- | --- |
+| `python3 start.py` | Launch the editor; reopens your last project. |
+| `python3 start.py --install` | Install (or refresh) the Graph Engineer, then launch. |
+| `python3 start.py --check` | Verify your setup and print fixes (`--json` for machines). |
+| `python3 start.py --project DIR` | Open a specific project root. |
+| `python3 start.py --checkout` | Open this repo, ignoring your last project. |
+| `python3 start.py --port N --no-browser` | Bind another port / don't open a browser. |
+| `python3 install-agent.py` | Install just the agent (`--copy`, `--uninstall`). |
 
 ## Editor
 
@@ -330,6 +317,22 @@ siren-studio/
 ```
 
 ## How the bridge works
+
+```
+┌──────────────── browser: app/ ─────────────────┐
+│  code editor  │  live graph  │  Graph Engineer │
+└───────────────────────┬─────────────────────────┘
+                        │ same-origin
+┌─────────────── bridge/server.py ────────────────┐
+│  /        serve the editor                       │
+│  /oc/*    reverse-proxy OpenCode (+auth, SSE)    │
+│  /fs/*    read/list/write diagrams               │
+│  /events  file-change + focus stream (SSE)       │
+└───────────────────────┬─────────────────────────┘
+                        │  the same files on disk
+                        ▼
+        opencode agent "graph-engineer"  →  *.mmd + *.gaps.md
+```
 
 - **Service discovery** — reads `~/.local/state/opencode/service.json`
   (`url`, `pid`, `password`) and authenticates with basic auth. Override with
