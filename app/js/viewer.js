@@ -532,15 +532,15 @@ export function clearHighlight() {
 
 // ── cross-file links ───────────────────────────────────────────────────────
 const SVG_NS = 'http://www.w3.org/2000/svg';
-// Gap between the label and its link glyph, and the glyph's own paint. The
-// glyph is a badge so it stays legible on any node fill: a node can be a light
-// blue or a dark grey, and accent-on-fill alone washed out. The badge rides the
-// ink ladder and the icon rides the accent; the literal fallbacks keep an
-// exported SVG (where the custom properties are undefined) rendering.
-const LINK_GLYPH_GAP = 6;
+// A linked node carries a small drawn external-link mark in its top-right
+// corner. It is painted in the node's own text color, which the diagram author
+// already chose to contrast that fill, so no badge is needed and the mark never
+// washes out on a light node. The literal fallback covers an exported SVG, where
+// the computed color still resolves but the accent token may not.
 const LINK_GLYPH_SIZE = 12;
-const LINK_GLYPH_STYLE = 'opacity:.92';
-const LINK_GLYPH_ACCENT = 'var(--accent,#7c9cff)';
+const LINK_GLYPH_INSET = 3;
+const LINK_GLYPH_STYLE = 'opacity:.9';
+const LINK_GLYPH_FALLBACK = 'var(--accent,#7c9cff)';
 
 function removeLinkGlyph(el) {
   el.querySelectorAll('.node-link-glyph').forEach((glyph) => glyph.remove());
@@ -569,47 +569,33 @@ function restoreLinkDash(el) {
 }
 
 /**
- * A small drawn external-link arrow the editor pins to the right of a link
- * label. Mermaid only gives us the shape and its text, and the `click` directive
- * has to stay plain in the .mmd, so the glyph is added here and never written
- * back to source. It is placed in the label's own coordinate space, so it lands
- * correctly for every node shape. A label that never laid out (a hidden pane)
- * simply gets no glyph.
+ * A small drawn external-link mark the editor pins inside the top-right corner
+ * of a node that links to another diagram. Mermaid only gives us the shape and
+ * its label, and the `click` directive has to stay plain in the .mmd, so the
+ * mark is added here and never written back to source. It is anchored to the
+ * node's own box, so it stays inside the shape whatever the label is made of
+ * (the interactive preview uses an HTML <foreignObject>; the export path uses
+ * <text>), and it is painted in the node's text color, which the diagram author
+ * already chose to contrast that fill. A node that never laid out (a hidden
+ * pane) simply gets no mark.
  */
 function attachLinkGlyph(el) {
-  // The interactive preview runs Mermaid with htmlLabels on, so node labels are
-  // an HTML <foreignObject> wrapped in `g.label`, not a <text> — probing for a
-  // <text> finds nothing on most diagram types and the glyph never attaches.
-  // Measure the label group itself; a <text> label (the export path) is measured
-  // through its parent, since a <text> cannot hold a <g>.
-  const label = el.querySelector('g.label') || el.querySelector('text');
-  if (!label || typeof label.getBBox !== 'function') return;
   let box;
-  try { box = label.getBBox(); } catch (_) { return; }
+  try { box = el.getBBox(); } catch (_) { return; }
   if (!box || !box.width) return;
-  const container = label.tagName && label.tagName.toLowerCase() === 'text'
-    ? (label.parentNode || el) : label;
+  let color = LINK_GLYPH_FALLBACK;
+  try { color = getComputedStyle(el).color || color; } catch (_) { /* keep fallback */ }
+
   const glyph = document.createElementNS(SVG_NS, 'g');
   glyph.setAttribute('class', 'node-link-glyph');
   glyph.setAttribute('aria-hidden', 'true');
   glyph.setAttribute('style', LINK_GLYPH_STYLE);
-
-  // The badge keeps the mark legible on any node fill; the icon is the
-  // conventional external-link symbol: a box with an arrow escaping its corner.
-  const badge = document.createElementNS(SVG_NS, 'rect');
-  badge.setAttribute('width', String(LINK_GLYPH_SIZE));
-  badge.setAttribute('height', String(LINK_GLYPH_SIZE));
-  badge.setAttribute('rx', '3');
-  badge.setAttribute('fill', 'var(--bg-elev,#11151d)');
-  badge.setAttribute('stroke', LINK_GLYPH_ACCENT);
-  badge.setAttribute('stroke-width', '1');
-
-  const icon = document.createElementNS(SVG_NS, 'g');
-  icon.setAttribute('fill', 'none');
-  icon.setAttribute('stroke', LINK_GLYPH_ACCENT);
-  icon.setAttribute('stroke-width', '1.3');
-  icon.setAttribute('stroke-linecap', 'round');
-  icon.setAttribute('stroke-linejoin', 'round');
+  glyph.setAttribute('fill', 'none');
+  glyph.setAttribute('stroke', color);
+  glyph.setAttribute('stroke-width', '1.3');
+  glyph.setAttribute('stroke-linecap', 'round');
+  glyph.setAttribute('stroke-linejoin', 'round');
+  // The conventional external-link symbol: a box with an arrow escaping its corner.
   for (const d of [
     'M4.8 3.4 H3.7 A1.5 1.5 0 0 0 2.2 4.9 v4.2 A1.5 1.5 0 0 0 3.7 10.6 h4.2 A1.5 1.5 0 0 0 9.4 9.1 V8',
     'M6.7 2.2 H9.8 V5.3',
@@ -617,13 +603,11 @@ function attachLinkGlyph(el) {
   ]) {
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', d);
-    icon.appendChild(path);
+    glyph.appendChild(path);
   }
-
-  glyph.append(badge, icon);
   glyph.setAttribute('transform',
-    `translate(${(box.x + box.width + LINK_GLYPH_GAP).toFixed(2)} ${(box.y + box.height / 2 - LINK_GLYPH_SIZE / 2).toFixed(2)})`);
-  container.appendChild(glyph);
+    `translate(${(box.x + box.width - LINK_GLYPH_INSET - LINK_GLYPH_SIZE).toFixed(2)} ${(box.y + LINK_GLYPH_INSET).toFixed(2)})`);
+  el.appendChild(glyph);
 }
 
 /**
