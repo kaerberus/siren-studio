@@ -330,7 +330,7 @@ siren-studio/
 │  ├─ global-permissions.json   graph_* denied to every agent by default
 │  ├─ skills/graph-engineering/
 │  └─ plugins/graph-tools.js
-└─ docs/architecture.md
+└─ docs/screenshots/        README screenshots
 ```
 
 ## How the bridge works

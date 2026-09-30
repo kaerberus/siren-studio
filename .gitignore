@@ -18,12 +18,12 @@ Thumbs.db
 # local dev suites (Node + jsdom; not shipped)
 tests/
 
-# internal handoff notes (local)
+# internal dev docs (local)
 docs/TODO.md
+docs/architecture.md
 
-# Impeccable live mode: commit the config, ignore session state
-.impeccable/live/*
-!.impeccable/live/config.json
+# Impeccable tooling (local, dev-only)
+.impeccable/
 
 # Scratch screenshots (design review captures)
 /screenshots/
