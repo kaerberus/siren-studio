@@ -533,14 +533,39 @@ export function clearHighlight() {
 // ── cross-file links ───────────────────────────────────────────────────────
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // Gap between the label and its link glyph, and the glyph's own paint. The
-// stroke rides the accent token so it tracks the theme; the fallback keeps an
-// exported SVG (where the custom property is undefined) rendering correctly.
-const LINK_GLYPH_GAP = 7;
-const LINK_GLYPH_STYLE = 'fill:none;stroke:var(--accent,#7c9cff);stroke-width:1.7;'
-  + 'stroke-linecap:round;stroke-linejoin:round;opacity:.85';
+// glyph is a badge so it stays legible on any node fill: a node can be a light
+// blue or a dark grey, and accent-on-fill alone washed out. The badge rides the
+// ink ladder and the icon rides the accent; the literal fallbacks keep an
+// exported SVG (where the custom properties are undefined) rendering.
+const LINK_GLYPH_GAP = 6;
+const LINK_GLYPH_SIZE = 12;
+const LINK_GLYPH_STYLE = 'opacity:.92';
+const LINK_GLYPH_ACCENT = 'var(--accent,#7c9cff)';
 
 function removeLinkGlyph(el) {
   el.querySelectorAll('.node-link-glyph').forEach((glyph) => glyph.remove());
+}
+
+// Mermaid writes a class's stroke-dasharray as an inline `!important`, which no
+// stylesheet rule can override, so the async dash is cleared here instead. A
+// linked node's underline and icon already say "this opens something"; the dash
+// is redundant clutter there. The original value is kept so a node that stops
+// being a link gets its dash back.
+function clearLinkDash(el) {
+  el.querySelectorAll('.label-container').forEach((shape) => {
+    const dash = shape.style.strokeDasharray;
+    if (!dash) return;
+    if (!shape.dataset.linkDash) shape.dataset.linkDash = dash;
+    shape.style.setProperty('stroke-dasharray', 'none', 'important');
+  });
+}
+
+function restoreLinkDash(el) {
+  el.querySelectorAll('.label-container').forEach((shape) => {
+    if (!shape.dataset.linkDash) return;
+    shape.style.setProperty('stroke-dasharray', shape.dataset.linkDash, 'important');
+    delete shape.dataset.linkDash;
+  });
 }
 
 /**
@@ -568,13 +593,36 @@ function attachLinkGlyph(el) {
   glyph.setAttribute('class', 'node-link-glyph');
   glyph.setAttribute('aria-hidden', 'true');
   glyph.setAttribute('style', LINK_GLYPH_STYLE);
-  const shaft = document.createElementNS(SVG_NS, 'path');
-  shaft.setAttribute('d', 'M0 6.4 L6.1 0.3');
-  const head = document.createElementNS(SVG_NS, 'path');
-  head.setAttribute('d', 'M1.9 0 H6.1 V4.2');
-  glyph.append(shaft, head);
+
+  // The badge keeps the mark legible on any node fill; the icon is the
+  // conventional external-link symbol: a box with an arrow escaping its corner.
+  const badge = document.createElementNS(SVG_NS, 'rect');
+  badge.setAttribute('width', String(LINK_GLYPH_SIZE));
+  badge.setAttribute('height', String(LINK_GLYPH_SIZE));
+  badge.setAttribute('rx', '3');
+  badge.setAttribute('fill', 'var(--bg-elev,#11151d)');
+  badge.setAttribute('stroke', LINK_GLYPH_ACCENT);
+  badge.setAttribute('stroke-width', '1');
+
+  const icon = document.createElementNS(SVG_NS, 'g');
+  icon.setAttribute('fill', 'none');
+  icon.setAttribute('stroke', LINK_GLYPH_ACCENT);
+  icon.setAttribute('stroke-width', '1.3');
+  icon.setAttribute('stroke-linecap', 'round');
+  icon.setAttribute('stroke-linejoin', 'round');
+  for (const d of [
+    'M4.8 3.4 H3.7 A1.5 1.5 0 0 0 2.2 4.9 v4.2 A1.5 1.5 0 0 0 3.7 10.6 h4.2 A1.5 1.5 0 0 0 9.4 9.1 V8',
+    'M6.7 2.2 H9.8 V5.3',
+    'M9.8 2.2 L5.5 6.5',
+  ]) {
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    icon.appendChild(path);
+  }
+
+  glyph.append(badge, icon);
   glyph.setAttribute('transform',
-    `translate(${(box.x + box.width + LINK_GLYPH_GAP).toFixed(2)} ${(box.y + box.height / 2 - 3.2).toFixed(2)})`);
+    `translate(${(box.x + box.width + LINK_GLYPH_GAP).toFixed(2)} ${(box.y + box.height / 2 - LINK_GLYPH_SIZE / 2).toFixed(2)})`);
   container.appendChild(glyph);
 }
 
@@ -593,11 +641,13 @@ export function markNodeLinks(targets) {
     el.classList.remove('node-link');
     delete el.dataset.link;
     removeLinkGlyph(el);
+    restoreLinkDash(el);
     const path = wanted.get(id);
     if (!path) continue;
     el.classList.add('node-link');
     el.dataset.link = path;
     attachLinkGlyph(el);
+    clearLinkDash(el);
     marked.push({ id, path });
   }
   return marked;

@@ -360,9 +360,11 @@ never underlines or bolds on hover — it only changes ink and fill.
 ### Signature Components
 - **Graph stage:** A dot-grid canvas (`radial-gradient` at 22px) on Void Ink.
   Pan/zoom drive the SVG `viewBox`, so magnification stays vector-crisp. Selected
-  nodes get a cobalt stroke and drop-shadow; nodes whose `click` links to another
-  diagram are painted like hyperlinks — cobalt fill, underlined — because the
-  graph itself must look navigable.
+  nodes get a cobalt stroke and drop-shadow; a node whose `click` links to another
+  diagram is painted like a hyperlink — cobalt fill, underlined — and carries a
+  small ink badge holding a cobalt external-link arrow to its right, so the link
+  reads on any node fill. A linked node also clears the async dash stroke, since
+  the underline and badge already carry the cue.
 - **Agent orb:** A 22px circle with a radial cobalt→violet gradient and a soft
   cobalt halo. While the agent is inferring it pulses (the halo widens) and a
   row of three cobalt dots ticks beside the status line — the panel's one piece
