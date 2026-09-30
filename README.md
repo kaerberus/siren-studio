@@ -1,20 +1,23 @@
 # Siren Studio
 
-[Mermaid.js](https://mermaid.js.org) is a way to draw diagrams from plain text.
-You write a few lines — `A[Start] --> B{Ready?}` — and it renders a flowchart.
-Because the diagram stays text, a large language model can read and change it as
-easily as you can, which makes it a natural fit for **agentic coding**: you plan
-visually, and the plan is something the model genuinely understands.
+[Mermaid.js](https://mermaid.js.org) is a way to draw diagrams from simple code.
+You write a few lines, like `dough --> oven --> bread`, and it renders a
+flowchart. Because the diagram stays code, a large language model can read and
+change it as easily as you can, which makes it a natural fit for **agentic
+coding**: you plan visually, and the plan is something the model genuinely
+understands.
 
 **Siren Studio** lets you edit those diagrams without a command line: Mermaid on
 one side, the drawn picture on the other, updating as you type. It runs on your
-own machine — Python 3 and a browser, no build step — and the diagrams are
+own machine (Python 3 and a browser, no build step), and the diagrams are
 ordinary files next to your code.
 
 It also integrates with **OpenCode**, so you can bring in its agents (running on
 local or cloud AI) to help design the diagrams in the first place, and then to
-find the gaps in those designs — missing error paths, open questions, and places
+find the gaps in those designs: missing error paths, open questions, and places
 where the picture and the code have drifted apart.
+
+*Agentically coded with DeepSeek V4.1 Flash.*
 
 ## Screenshots
 
