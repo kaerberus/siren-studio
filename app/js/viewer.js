@@ -531,6 +531,47 @@ export function clearHighlight() {
 }
 
 // ── cross-file links ───────────────────────────────────────────────────────
+const SVG_NS = 'http://www.w3.org/2000/svg';
+// Gap between the label and its link glyph, and the glyph's own paint. The
+// stroke rides the accent token so it tracks the theme; the fallback keeps an
+// exported SVG (where the custom property is undefined) rendering correctly.
+const LINK_GLYPH_GAP = 7;
+const LINK_GLYPH_STYLE = 'fill:none;stroke:var(--accent,#7c9cff);stroke-width:1.7;'
+  + 'stroke-linecap:round;stroke-linejoin:round;opacity:.85';
+
+function removeLinkGlyph(el) {
+  el.querySelectorAll('.node-link-glyph').forEach((glyph) => glyph.remove());
+}
+
+/**
+ * A small drawn external-link arrow the editor pins to the right of a link
+ * label. Mermaid only gives us the shape and its text, and the `click` directive
+ * has to stay plain in the .mmd, so the glyph is added here and never written
+ * back to source. It is placed in the label's own coordinate space, so it lands
+ * correctly for every node shape. A label that never laid out (a hidden pane)
+ * simply gets no glyph.
+ */
+function attachLinkGlyph(el) {
+  const text = el.querySelector('text');
+  if (!text || typeof text.getBBox !== 'function') return;
+  let box;
+  try { box = text.getBBox(); } catch (_) { return; }
+  if (!box || !box.width) return;
+  const container = text.closest('g.label') || text.parentNode || el;
+  const glyph = document.createElementNS(SVG_NS, 'g');
+  glyph.setAttribute('class', 'node-link-glyph');
+  glyph.setAttribute('aria-hidden', 'true');
+  glyph.setAttribute('style', LINK_GLYPH_STYLE);
+  const shaft = document.createElementNS(SVG_NS, 'path');
+  shaft.setAttribute('d', 'M0 6.4 L6.1 0.3');
+  const head = document.createElementNS(SVG_NS, 'path');
+  head.setAttribute('d', 'M1.9 0 H6.1 V4.2');
+  glyph.append(shaft, head);
+  glyph.setAttribute('transform',
+    `translate(${(box.x + box.width + LINK_GLYPH_GAP).toFixed(2)} ${(box.y + box.height / 2 - 3.2).toFixed(2)})`);
+  container.appendChild(glyph);
+}
+
 /**
  * Mark nodes that link to another diagram, so the caller can open it on click.
  *
@@ -545,10 +586,12 @@ export function markNodeLinks(targets) {
   for (const { id, el } of getNodeElements()) {
     el.classList.remove('node-link');
     delete el.dataset.link;
+    removeLinkGlyph(el);
     const path = wanted.get(id);
     if (!path) continue;
     el.classList.add('node-link');
     el.dataset.link = path;
+    attachLinkGlyph(el);
     marked.push({ id, path });
   }
   return marked;
