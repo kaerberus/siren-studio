@@ -214,10 +214,17 @@ export function createAgent({
     const isNewAssistant = assistants.length > (turn ? turn.turnAssistantCount : 0);
     assistantCount = assistants.length;
 
+    // One OpenCode turn is several assistant messages — a step per tool call,
+    // each with its own `completed` time — so "the last assistant finished" is
+    // not the end of the turn. The session emits an `idle` message when it is
+    // actually done; that is the signal, or the run would look finished after
+    // the first step.
+    const idle = endsWithIdle(messages);
+
     let busy;
     if (turn && !turn.done) {
       const decision = turnDecision({
-        active: true, done: false, isNewAssistant, lastCompleted,
+        active: true, done: false, isNewAssistant, lastCompleted, idle,
         contentKey: key, lastKey: turn.lastKey, lastContentAt: turn.lastContentAt,
         now: Date.now(), stallMs, notifiedEmpty: turn.notifiedEmpty,
         visible: hasVisibleOutput(last), running: hasRunningTool(last),
@@ -416,18 +423,34 @@ export function hasRunningTool(message) {
 }
 
 /**
+ * Has the session gone idle since the last user message? OpenCode closes a turn
+ * with an `idle` message after the final assistant message; scanning back to the
+ * user message distinguishes "the turn is over" from "between two steps".
+ */
+export function endsWithIdle(messages) {
+  const list = messages || [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const type = list[i]?.type;
+    if (type === 'idle') return true;
+    if (type === 'user') return false;
+  }
+  return false;
+}
+
+/**
  * Decide how an in-flight turn is progressing.
  *
  * `contentKey` drives the stall timer (any change at all is progress), while
  * `visible` decides emptiness (reasoning-only output is still "no output"), and
  * `running` suppresses the stall entirely while a tool is in flight. A turn is
- * only "empty" once it has actually produced a reply and that reply carried
- * nothing the reader can see — never just because the assistant message has not
- * appeared yet.
+ * only finished once `idle` says the session is done *and* a completed assistant
+ * has arrived: one turn emits many assistant messages, so completing the first
+ * is not the end. It is "empty" once it finishes having produced nothing the
+ * reader can see — never just because the assistant message has not appeared yet.
  * @returns {{progressed:boolean,lastContentAt:number,done:boolean,busy:boolean,stalled:boolean,empty:boolean}}
  */
 export function turnDecision({
-  active, done, isNewAssistant, lastCompleted,
+  active, done, isNewAssistant, lastCompleted, idle,
   contentKey: key, lastKey, lastContentAt, now, stallMs, notifiedEmpty,
   visible, running,
 }) {
@@ -437,8 +460,8 @@ export function turnDecision({
   let finished = done;
   let busy = false;
   if (active && !done) {
-    if (isNewAssistant && lastCompleted) { finished = true; busy = false; }
-    else busy = true; // still waiting — no assistant message yet, or one in flight
+    if (isNewAssistant && lastCompleted && idle) { finished = true; busy = false; }
+    else busy = true; // a step in flight, or one turn still running between steps
   }
 
   return {

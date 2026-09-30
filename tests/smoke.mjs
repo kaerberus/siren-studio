@@ -653,14 +653,27 @@ try {
   check('new output resets the stall timer', fresh.stalled === false && fresh.progressed === true && fresh.lastContentAt === now);
 
   // completed reply with content -> done, not empty
-  const finished = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: '9:0:0:', lastKey: '9:0:0:', lastContentAt: now - 5000, now, visible: true, running: false });
+  const finished = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, idle: true, contentKey: '9:0:0:', lastKey: '9:0:0:', lastContentAt: now - 5000, now, visible: true, running: false });
   check('completed reply ends the turn and is not empty',
     finished.done === true && finished.busy === false && finished.empty === false);
 
+  // one OpenCode turn is several assistant messages, each completing on its own
+  // step; the first completed step must NOT end the turn. Only idle does.
+  const betweenSteps = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, idle: false, contentKey: '9:0:0:', lastKey: '9:0:0:', lastContentAt: now, now, visible: true, running: false });
+  check('a completed step before idle stays busy',
+    betweenSteps.done === false && betweenSteps.busy === true, JSON.stringify(betweenSteps));
+
+  check('endsWithIdle sees idle after the last user',
+    a.endsWithIdle([{ type: 'user' }, { type: 'assistant' }, { type: 'assistant' }, { type: 'idle' }]) === true);
+  check('endsWithIdle is false between steps',
+    a.endsWithIdle([{ type: 'user' }, { type: 'assistant' }]) === false);
+  check('endsWithIdle ignores an idle from before the last user',
+    a.endsWithIdle([{ type: 'idle' }, { type: 'user' }, { type: 'assistant' }]) === false);
+
   // completed reply with no content -> empty
-  const empty = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: null, lastKey: null, lastContentAt: now, now, visible: false, running: false });
+  const empty = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, idle: true, contentKey: null, lastKey: null, lastContentAt: now, now, visible: false, running: false });
   check('completed-with-no-output is reported empty', empty.empty === true && empty.done === true);
-  const once = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: null, lastKey: null, lastContentAt: now, now, notifiedEmpty: true, visible: false, running: false });
+  const once = a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, idle: true, contentKey: null, lastKey: null, lastContentAt: now, now, notifiedEmpty: true, visible: false, running: false });
   check('empty is only reported once', once.empty === false);
 
   // a tool in flight is a wait, not a hang. This is exactly what the agent's
@@ -690,7 +703,7 @@ try {
       && a.hasVisibleOutput({ content: [{ type: 'text', text: 'x' }] }) === true
       && a.hasVisibleOutput({ content: [{ type: 'tool', name: 'read' }] }) === true);
   check('a reasoning-only completion is still "no output"',
-    a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, contentKey: '0:20:0:', lastKey: null, lastContentAt: now, now, visible: false, running: false }).empty === true);
+    a.turnDecision({ ...base, isNewAssistant: true, lastCompleted: true, idle: true, contentKey: '0:20:0:', lastKey: null, lastContentAt: now, now, visible: false, running: false }).empty === true);
   check('hasRunningTool spots an in-flight tool',
     a.hasRunningTool({ content: [{ type: 'tool', name: 'read', state: { status: 'running' } }] }) === true
       && a.hasRunningTool({ content: [{ type: 'tool', name: 'read', state: { status: 'completed' } }] }) === false);
