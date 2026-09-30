@@ -123,6 +123,11 @@ export function createAgent({
       await ensureSession();
       setStatus(present === false ? `${AGENT_ID} not installed` : readyLabel());
       startStream();
+      // Replay the reused session's transcript now: the event stream only
+      // reports activity that happens after we subscribe, so without this the
+      // log stays empty on load and a reload looks like the history vanished.
+      // It also seeds assistantCount, which beginTurn() uses as its baseline.
+      await refresh().catch(() => {});
     } catch (err) {
       setStatus(`offline · ${err.message}`);
     }

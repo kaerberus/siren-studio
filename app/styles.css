@@ -80,6 +80,11 @@ html[data-theme="light"] {
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute must win over component display rules like
+   `.icon-btn { display: inline-flex }`; otherwise elements toggled with
+   `el.hidden` (e.g. the composer Stop button) stay visible. */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   margin: 0;
