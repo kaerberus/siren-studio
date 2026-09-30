@@ -26,3 +26,6 @@ tests/package-lock.json
 
 # Scratch screenshots (design review captures)
 screenshots/
+
+# Working diagrams are local state; shipped samples live in example-graphs/
+graphs/

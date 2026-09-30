@@ -1,0 +1,23 @@
+flowchart TD
+    Start([Request arrives]):::start --> Valid{Payload valid?}:::decision
+    Valid -->|no| Reject[400 Bad request]:::error
+    Valid -->|yes| Persist[(Write draft)]:::data
+    Persist --> RenderPipeline[["Render pipeline (detail)"]]:::async
+    RenderPipeline --> Ok[200 OK]:::terminal
+    RenderPipeline -->|renderer error| Fail[502 Render failed]:::error
+    Reject --> End([Response sent]):::terminal
+    Ok --> End
+    Fail --> End
+
+    click RenderPipeline "02-render-pipeline.mmd" "Open the render pipeline detail"
+
+    %% Palette: blue-only. Hue is constant, so class is carried by lightness.
+    %% Lightness ladder runs decision (brightest) -> terminal (lightest paper)
+    %% and the error path stays darkest so it reads as the outlier.
+    classDef start fill:#0d3b66,stroke:#082744,color:#ffffff
+    classDef decision fill:#1e6fb8,stroke:#14507f,color:#ffffff
+    classDef error fill:#04182c,stroke:#000000,stroke-width:2px,color:#ffffff
+    classDef data fill:#2d8fd4,stroke:#1a6aa3,color:#111111
+    classDef async fill:#6db3e8,stroke:#3d8fc8,stroke-dasharray:6 3,color:#111111
+    classDef process fill:#bcdcf5,stroke:#7fb4dd,color:#111111
+    classDef terminal fill:#eaf4fc,stroke:#9ec4e0,color:#111111

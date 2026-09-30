@@ -306,7 +306,7 @@ opencode-mermaid/
 │  ├─ index.html styles.css
 │  ├─ js/  app.js editor.js viewer.js agent.js bridge.js
 │  └─ vendor/               mermaid 11 + CodeMirror 5 (offline)
-├─ graphs/                  example diagrams (this project's diagrams directory)
+├─ example-graphs/          example diagrams (reference; the editor's default is graphs/)
 ├─ agent/                   agent, skill and plugin sources
 │  ├─ graph-engineer.md
 │  ├─ global-permissions.json   graph_* denied to every agent by default

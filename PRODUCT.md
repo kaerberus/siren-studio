@@ -102,7 +102,9 @@ both Mermaid and CodeMirror are vendored.
   and known limitations.
 - `docs/TODO.md` — handoff notes; the tracked work list is done apart from a
   deferred child-viewport item.
-- `graphs/*.mmd` and `graphs/*.gaps.md` — worked example diagrams and ledgers.
+- `example-graphs/*.mmd` and `example-graphs/*.gaps.md` — worked example diagrams
+  and ledgers, shipped as reference (the editor's diagrams directory, `graphs/`,
+  is local state and is not committed).
 - `tests/` — seven Node + jsdom dev suites (about 250 checks) that guard specific
   past regressions; `tests/README.md` documents how to run them.
 - `agent/`, `agent/skills/graph-engineering/`, `agent/plugins/graph-tools.js` and

@@ -22,6 +22,9 @@ _Source of truth: **provisional / filler** — created to exercise the editor's 
 ## Decisions
 - 2026-09-28 Created as a **test fixture** for editor linking; expect a redraw once the real pipeline design lands.
 - 2026-09-28 The retry loop stays internal to the worker pool (backoff re-renders) rather than returning to the queue, to keep the loop bounded on one screen.
+- 2026-09-30 **Blue-only palette applied, matching `01-example-flow.mmd`.** The seven semantic classes use the same ramp and the same values, so the two diagrams read as one system.
+- 2026-09-30 `external` and `filler` were **excluded from the ramp and left grey** — deliberately, even though the request was "same palette". On `01` there is no `external` or `filler`, so there was no precedent to copy; folding them into the blue would have made them indistinguishable from ramp steps with no cue that one is out-of-boundary and the other is a placeholder. `external` was previously the light blue `#56b4e9`, which sits at the same luminance as ramp step `#2d8fd4` and would collide after the swap.
 
 ## Changes
 - 2026-09-28 Initial file: lease → load → cache → render/retry → store → publish, plus a filler metrics node and a dead-letter terminal.
+- 2026-09-30 Palette only: seven semantic classes swapped to the blue-only ramp from `01-example-flow.mmd`; `external` and `filler` remained grey (see Decision). Nodes, edges, subgraph and semantics unchanged.

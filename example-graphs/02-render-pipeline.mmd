@@ -28,13 +28,16 @@ flowchart TD
     Drop --> Done
     DeadLetter --> Done
 
-    %% Palette: Okabe–Ito (CVD-safe). `filler` is deliberately outside the palette — grey marks placeholder nodes.
-    classDef start fill:#0072b2,stroke:#004c78,color:#ffffff
-    classDef decision fill:#f0e442,stroke:#8a8000,color:#111111
-    classDef error fill:#c24e00,stroke:#8f3900,stroke-width:2px,color:#ffffff
-    classDef data fill:#009e73,stroke:#006b4e,color:#111111
-    classDef async fill:#cc79a7,stroke:#8f4f72,stroke-dasharray:6 3,color:#111111
-    classDef process fill:#3a3f45,stroke:#8b949e,color:#ffffff
-    classDef terminal fill:#e8e8e8,stroke:#9aa0a6,color:#111111
-    classDef external fill:#56b4e9,stroke:#004c78,color:#111111
+    %% Palette: blue-only, same ramp as 01-example-flow.mmd. Hue is constant, so class is carried by lightness.
+    classDef start fill:#0d3b66,stroke:#082744,color:#ffffff
+    classDef decision fill:#1e6fb8,stroke:#14507f,color:#ffffff
+    classDef error fill:#04182c,stroke:#000000,stroke-width:2px,color:#ffffff
+    classDef data fill:#2d8fd4,stroke:#1a6aa3,color:#111111
+    classDef async fill:#6db3e8,stroke:#3d8fc8,stroke-dasharray:6 3,color:#111111
+    classDef process fill:#bcdcf5,stroke:#7fb4dd,color:#111111
+    classDef terminal fill:#eaf4fc,stroke:#9ec4e0,color:#111111
+    %% `external` and `filler` are deliberately *not* in the blue ramp: they encode a different kind
+    %% of node (outside the trust boundary / placeholder), not a step on the lightness ladder. Greys,
+    %% so they cannot be mistaken for a ramp step on a colour-only reading.
+    classDef external fill:#5c6b7a,stroke:#2f3a45,color:#ffffff
     classDef filler fill:#6e7681,stroke:#484f58,color:#ffffff
