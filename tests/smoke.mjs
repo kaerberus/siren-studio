@@ -531,12 +531,10 @@ try {
   const idle = studio.composerCopy(false, 'IDLE-PLACEHOLDER');
   const busy = studio.composerCopy(true, 'IDLE-PLACEHOLDER');
   check('idle composer copy invites a prompt',
-    idle.placeholder === 'IDLE-PLACEHOLDER'
-      && /<kbd>Ctrl<\/kbd>\+<kbd>Enter<\/kbd> to send/.test(idle.hint)
-      && /<kbd>Shift<\/kbd>\+<kbd>Enter<\/kbd> new line$/.test(idle.hint),
+    idle.placeholder === 'IDLE-PLACEHOLDER' && idle.hint === '<kbd>Enter</kbd> to send',
     JSON.stringify(idle));
   check('busy composer copy advertises steering',
-    /steer/i.test(busy.placeholder) && /<kbd>Ctrl<\/kbd>\+<kbd>Enter<\/kbd> to steer$/.test(busy.hint),
+    /steer/i.test(busy.placeholder) && busy.hint === '<kbd>Enter</kbd> to steer',
     JSON.stringify(busy));
   check('the idle placeholder is the shipped one',
     /Graph Engineer/.test(document.querySelector('#chat-input').placeholder),

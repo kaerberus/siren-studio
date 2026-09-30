@@ -267,10 +267,9 @@ function openModelPalette() {
  * busy composer says so rather than silently disabling Send.
  */
 function composerCopy(busy, idlePlaceholder) {
-  const send = '<kbd>Ctrl</kbd>+<kbd>Enter</kbd>';
   return busy
-    ? { placeholder: 'Model is running — send a message to steer it…', hint: `${send} to steer` }
-    : { placeholder: idlePlaceholder, hint: `${send} to send<span class="sep">·</span><kbd>Shift</kbd>+<kbd>Enter</kbd> new line` };
+    ? { placeholder: 'Model is running — send a message to steer it…', hint: '<kbd>Enter</kbd> to steer' }
+    : { placeholder: idlePlaceholder, hint: '<kbd>Enter</kbd> to send' };
 }
 
 async function startAgent(model) {
@@ -1354,7 +1353,8 @@ function wireUI() {
     await sendChat(text);
   };
   $('chat-input').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    // Enter sends; Shift+Enter keeps the newline, and an IME commit is not a send.
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       $('composer').requestSubmit();
     }

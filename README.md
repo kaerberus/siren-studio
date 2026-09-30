@@ -121,7 +121,7 @@ open: `opencode service status`).
 | `Ctrl+N` | New diagram |
 | `Ctrl+B` | Toggle Graph Engineer panel |
 | `Ctrl+1` | Toggle the files sidebar |
-| `Ctrl+Enter` | Send a chat message, or steer a running one |
+| `Enter` | Send a chat message, or steer a running one (`Shift+Enter` for a new line) |
 
 ## The Graph Engineer agent
 
