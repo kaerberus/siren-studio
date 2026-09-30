@@ -95,6 +95,14 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .spacer { flex: 1 1 auto; }
 .hint { color: var(--text-faint); font-size: 11.5px; }
+/* Composer key hint: real keycaps rather than a sentence. */
+.keymap { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.keymap kbd {
+  font-family: var(--font-mono); font-size: 10px; line-height: 1;
+  padding: 3px 5px 4px; border-radius: 4px; color: var(--text-dim);
+  background: var(--bg-inset); border: 1px solid var(--border);
+}
+.keymap .sep { color: var(--border); }
 
 /* Keyboard focus is always visible — a thin accent rule. Zero specificity so a
    component that already shifts its own border to the accent keeps doing that. */

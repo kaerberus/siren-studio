@@ -347,6 +347,7 @@ until touched, and then only the border or the ink changes.
 - **Style:** Well Ink background, 1px Rule Line border, 7px radius, 12.5–13px type. Textareas and the composer use the sans face; the workspace directory input and modal path fields use mono because they hold paths.
 - **Focus:** Border shifts to Cobalt Signal; the browser outline is suppressed. No ring, no glow, no background change.
 - **Error / Disabled:** Errors surface as text or as an amber/red notice strip rather than as a field border, because most failures here are connection-level, not field-level.
+- **Key hint:** The composer states its shortcut as real keycaps — `<kbd>` chips in mono on Well Ink, 4px radius, 10px type — rather than a sentence, and the busy state swaps "to send" for "to steer".
 
 ### Navigation
 Three navigation registers, all quiet: **top-bar tabs** for open diagrams

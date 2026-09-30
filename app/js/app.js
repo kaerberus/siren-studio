@@ -267,9 +267,10 @@ function openModelPalette() {
  * busy composer says so rather than silently disabling Send.
  */
 function composerCopy(busy, idlePlaceholder) {
+  const send = '<kbd>Ctrl</kbd>+<kbd>Enter</kbd>';
   return busy
-    ? { placeholder: 'Model is running — send a message to steer it…', hint: 'Ctrl+Enter to steer' }
-    : { placeholder: idlePlaceholder, hint: 'Ctrl+Enter to send' };
+    ? { placeholder: 'Model is running — send a message to steer it…', hint: `${send} to steer` }
+    : { placeholder: idlePlaceholder, hint: `${send} to send<span class="sep">·</span><kbd>Shift</kbd>+<kbd>Enter</kbd> new line` };
 }
 
 async function startAgent(model) {
@@ -287,7 +288,7 @@ async function startAgent(model) {
       // answer to a question it asked. Stop is the affordance for a busy turn.
       const copy = composerCopy(busy, chatInput.dataset.idlePlaceholder);
       chatInput.placeholder = copy.placeholder;
-      $('composer-hint').textContent = copy.hint;
+      $('composer-hint').innerHTML = copy.hint;
       $('chat-stop').hidden = !busy;
       document.querySelector('.agent-orb')?.classList.toggle('busy', busy);
     },
