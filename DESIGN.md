@@ -349,6 +349,10 @@ until touched, and then only the border or the ink changes.
 - **Error / Disabled:** Errors surface as text or as an amber/red notice strip rather than as a field border, because most failures here are connection-level, not field-level.
 - **Key hint:** The composer states its shortcut as a real keycap — `<kbd>Enter</kbd>`, a chip in mono on Well Ink, 4px radius, 10px type — and the busy state swaps "to send" for "to steer". `Enter` sends; `Shift+Enter` inserts a newline.
 
+### Preview controls
+- **Optimize fit for viewport:** a checkbox in the preview pane head with a small status lamp. It transposes a flowchart to the pane's axis when the authored graph wastes more than half the pane on its non-binding axis. The lamp is the system's one three-state signal: **green** while the feature is on (regardless of whether it acts), **amber** when the current diagram would transpose but the feature is off, and neutral (Faint Annotation) when there is nothing to do. It is the one lamp that states an *opportunity* rather than a fault — which is why it uses amber, not Signal Red.
+- **Zoom / present:** the `− Fit +` mini buttons and the present toggle, all plain ink until hover.
+
 ### Navigation
 Three navigation registers, all quiet: **top-bar tabs** for open diagrams
 (8px radius, Hover Ink on hover, Active Ink plus a Rule Line border and a cobalt

@@ -371,13 +371,18 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: var(--bg-inset); border: 1px solid var(--border); color: var(--text-faint);
 }
-.smart-toggle {
-  display: inline-flex; align-items: center; gap: 5px;
+.fit-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
   font-size: 11.5px; color: var(--text-dim); cursor: pointer;
   padding: 0 6px 0 2px; white-space: nowrap;
 }
-.smart-toggle input { accent-color: var(--accent); margin: 0; }
-.smart-toggle:hover { color: var(--text); }
+.fit-toggle input { accent-color: var(--accent); margin: 0; }
+.fit-toggle:hover { color: var(--text); }
+/* Fit lamp: green when optimize fit is on, amber when the current diagram would
+   benefit but the feature is off, neutral when there is nothing to do. */
+.fit-lamp { width: 7px; height: 7px; border-radius: 999px; flex: none; background: var(--text-faint); transition: background 0.15s ease; }
+.fit-lamp[data-state="on"] { background: var(--ok); box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.16); }
+.fit-lamp[data-state="available"] { background: var(--warn); box-shadow: 0 0 0 3px rgba(210, 153, 34, 0.16); }
 .viewer-note {
   font-size: 11px; color: var(--text-faint); font-style: italic;
   border-left: 1px solid var(--border); padding-left: 8px; margin-left: 4px;
@@ -436,19 +441,29 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
    the label is painted like a hyperlink and the editor pins a small drawn
    external-link mark at the end of its label, sized and coloured to the text
    (viewer.js). The directive stays plain in the .mmd — the mark is editor-only
-   chrome. Mermaid styles SVG text itself, hence the !important. */
+   chrome. Mermaid styles SVG text itself, hence the !important.
+   The underline goes on the text (.nodeLabel / text), never on the `.label`
+   group. Underlining the group propagates the decoration into Mermaid's HTML
+   label, whose <p> is a block wider than the text, so the browser underlines
+   the whole box and leaves a stray stub after the last glyph. */
 .node-link { cursor: pointer; }
 .node-link .label, .node-link .nodeLabel, .node-link text {
   fill: var(--accent) !important;
   color: var(--accent) !important;
+}
+.node-link .nodeLabel, .node-link text {
   text-decoration: underline;
   text-underline-offset: 2px;
+  /* Skip-ink breaks the underline around the closing paren's descender and
+     resumes it as a tiny detached stub just past the last glyph, which reads
+     as a stray mark. A continuous underline avoids it. */
+  text-decoration-skip-ink: none;
 }
 .node-link-glyph { transition: opacity 0.12s ease; }
 .node-link-glyph,
 .node-link-glyph path { fill: none !important; }
 .node-link:hover { filter: drop-shadow(0 0 4px rgba(124, 156, 255, 0.85)); }
-.node-link:hover .label, .node-link:hover .nodeLabel, .node-link:hover text {
+.node-link:hover .nodeLabel, .node-link:hover text {
   text-decoration-thickness: 2px;
 }
 .node-link:hover .node-link-glyph { opacity: 1 !important; }
@@ -559,12 +574,38 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 .chat-empty { margin: auto; text-align: center; color: var(--text-faint); font-size: 12.5px; line-height: 1.7; padding: 20px; }
 .chat-empty strong { color: var(--text); }
 
-.quick-prompts { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border-soft); }
-.quick-prompts button {
-  font-size: 11.5px; padding: 4px 9px; border-radius: 999px;
-  background: var(--bg-inset); border: 1px solid var(--border); color: var(--text-dim);
+/* Quick prompts: an even grid so every option claims an equal cell and the set
+   fills the panel, instead of wrapping into a ragged pill run. */
+.quick-prompts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-soft);
 }
-.quick-prompts button:hover { color: var(--accent); border-color: var(--accent); }
+.quick-prompts button {
+  min-width: 0;
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.2;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--text-dim);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.quick-prompts button:hover,
+.quick-prompts button:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
 
 .composer { border-top: 1px solid var(--border); padding: 10px 12px 12px; }
 .composer textarea {

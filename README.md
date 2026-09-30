@@ -74,17 +74,20 @@ open: `opencode service status`).
   PNG export re-renders the diagram with text labels and no `<foreignObject>`
   (browsers refuse to rasterise those inside an `<img>`), and reports a clear
   error if the browser can't produce the image.
-- **Smart view** (the checkbox next to the zoom controls, on by default) lays a
-  flowchart out on the other axis when that uses the pane better. A wide `LR`
-  graph in a tall preview pane otherwise fits by width and leaves most of the
-  height empty; smart view draws it as `TD` instead. It only kicks in when the
-  fitted graph would use **less than 45%** of the pane on its non-binding axis
-  *and* the graph's direction disagrees with the pane's shape, so it can't
-  oscillate. **Flowcharts only** — sequence, state, pie and ER diagrams have no
-  direction to flip.
-  It is a *view*: the file is untouched, the header shows *transposed to fit*,
-  and you can uncheck it to see the graph as authored. Exports follow what is on
-  screen. It re-decides when the pane is resized or either splitter is dragged.
+- **Optimize fit for viewport** (the checkbox next to the zoom controls, on by
+  default) lays a flowchart out on the other axis when that uses the pane
+  better. A wide `LR` graph in a tall preview pane otherwise fits by width and
+  leaves most of the height empty; optimize fit draws it as `TD` instead. It
+  only acts when the fitted graph would use **less than 45%** of the pane on its
+  non-binding axis *and* the graph's direction disagrees with the pane's shape,
+  so it can't oscillate. **Flowcharts only** — sequence, state, pie and ER
+  diagrams have no direction to flip.
+  Its lamp says what it is doing: **green** while it is on, **amber** when the
+  current diagram would transpose but the feature is off, and neutral when there
+  is nothing to do. It is a *view*: the file is untouched, the header shows
+  *transposed to fit* while flipped, and you can uncheck it to see the graph as
+  authored. Exports follow what is on screen. It re-decides when the pane is
+  resized or either splitter is dragged.
 - **Selection sync** — hover a node in the preview and its source lines light up;
   click an outline entry to jump to its definition; click an ordinary node to
   jump to it in the editor.

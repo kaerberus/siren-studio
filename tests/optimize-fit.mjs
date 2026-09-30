@@ -1,5 +1,6 @@
-// Smart view: transposes a flowchart only when its axis disagrees with the pane
-// and it wastes more than 45% of the pane. Pane sizes are stubbed because jsdom
+// Optimize fit: transposes a flowchart only when its axis disagrees with the
+// pane and it wastes more than 45% of the pane. The lamp state (enabled /
+// qualifies / idle) is asserted alongside. Pane sizes are stubbed because jsdom
 // does no layout.
 import { JSDOM } from 'jsdom';
 
@@ -46,10 +47,12 @@ const TD = 'flowchart TD\n    A --> B\n';
 
 // portrait pane: a wide graph wastes it, a tall one fits
 pane = { w: 400, h: 800 };
-viewer.setSmartView(true);
+viewer.setOptimizeFit(true);
 await viewer.render(LR);
 check('portrait pane + LR graph -> transposed', viewer.isTransposed() === true,
   `rendered: ${viewer.getRenderedSource().split('\n')[0]}`);
+check('enabled -> lamp on and qualifying',
+  viewer.getFitState().enabled === true && viewer.getFitState().qualifies === true);
 check('transposed render is the flipped source',
   viewer.getRenderedSource().startsWith('flowchart TD'), viewer.getRenderedSource().split('\n')[0]);
 await viewer.render(TD);
@@ -71,19 +74,27 @@ await viewer.render(LR);
 check('square-ish pane + LR graph -> left alone', viewer.isTransposed() === false,
   viewer.getRenderedSource().split('\n')[0]);
 
-// disabled -> never transposes
-viewer.setSmartView(false);
+// disabled -> never transposes, but the lamp still reports the opportunity
+viewer.setOptimizeFit(false);
 pane = { w: 400, h: 800 };
 await viewer.render(LR);
-check('smart view off -> never transposed', viewer.isTransposed() === false);
-check('smart view off -> authored source kept', viewer.getRenderedSource().startsWith('flowchart LR'));
+const offLR = viewer.getFitState();
+check('optimize fit off -> never transposed', viewer.isTransposed() === false);
+check('optimize fit off -> authored source kept', viewer.getRenderedSource().startsWith('flowchart LR'));
+check('off + LR in a portrait pane -> qualifies (lamp available)',
+  offLR.enabled === false && offLR.qualifies === true, JSON.stringify(offLR));
+await viewer.render(TD);
+const offTD = viewer.getFitState();
+check('off + TD in a portrait pane -> idle (nothing to do)',
+  offTD.enabled === false && offTD.qualifies === false, JSON.stringify(offTD));
 
 // non-flowcharts are never touched
-viewer.setSmartView(true);
+viewer.setOptimizeFit(true);
 const seq = 'sequenceDiagram\n    A->>B: hi\n';
 await viewer.render(seq);
 check('sequence diagram -> never transposed', viewer.isTransposed() === false);
 check('sequence diagram -> source unchanged', viewer.getRenderedSource() === seq.trim());
+check('sequence diagram -> idle (nothing to do)', viewer.getFitState().qualifies === false);
 
 let failed = 0;
 for (const [status, name, extra] of results) {

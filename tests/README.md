@@ -21,8 +21,8 @@ running (`opencode service status`); they spawn their own throwaway
 
 | suite | covers |
 | --- | --- |
-| `smoke.mjs` | editor boot, tabs, preview, outline, gaps panel, chat rendering, cross-file links, both splitters, the pan threshold, workspace labels and rescan, model palette, smart view, missing-agent handling, file tree, workspace picker |
-| `smart-view.mjs` | the transposition decision across portrait / landscape / square panes |
+| `smoke.mjs` | editor boot, tabs, preview, outline, gaps panel, chat rendering, cross-file links, both splitters, the pan threshold, workspace labels and rescan, model palette, optimize fit, missing-agent handling, file tree, workspace picker |
+| `optimize-fit.mjs` | the transposition decision across portrait / landscape / square panes, and the fit lamp state |
 | `export-e2e.mjs` | `buildExportSvg` output rasterisable by real Mermaid (`<img>`), labels kept, no external refs — and that a `click` link lands on the node id Mermaid really emits |
 | `project-setup.py` | project/diagrams-directory detection guards, the launcher's project memory, awareness wiring, idempotent re-run, unwire |
 | `plugin-bridge.py` | the plugin's bridge API: validation round-trip, focus delivery, the size advisory |

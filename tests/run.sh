@@ -92,7 +92,7 @@ run() {
 }
 
 run smoke        "$NODE" smoke.mjs
-run smart-view   "$NODE" smart-view.mjs
+run optimize-fit "$NODE" optimize-fit.mjs
 run export       "$NODE" export-e2e.mjs
 run project      python3 project-setup.py
 run bridge-api   python3 plugin-bridge.py

@@ -5,7 +5,7 @@ import { createEditor } from './editor.js';
 import {
   initViewer, render as renderGraph, setTheme as setMermaidTheme, fit, zoom,
   exportSvg, exportPng, lintMermaid, highlightNode, clearHighlight,
-  setEmptyVisible, focusNode, resetView, parseSource, setSmartView, isTransposed,
+  setEmptyVisible, focusNode, resetView, parseSource, setOptimizeFit, isTransposed, getFitState,
   getRenderedSource, markNodeLinks,
 } from './viewer.js';
 import { createAgent, extractAssistant, splitPrompt, toolLabel } from './agent.js';
@@ -740,16 +740,20 @@ async function saveAs(tab) {
   }
 }
 
-function applySmartView(on) {
-  setSmartView(on);
-  $('smart-view').checked = on;
-  localStorage.setItem('ms-smart-view', on ? '1' : '0');
-  updateViewerNote();
+function applyOptimizeFit(on) {
+  setOptimizeFit(on);
+  $('optimize-fit').checked = on;
+  localStorage.setItem('ms-optimize-fit', on ? '1' : '0');
+  updateFitIndicator();
 }
 
-function updateViewerNote() {
+function updateFitIndicator() {
   const note = $('viewer-note');
   if (note) note.hidden = !isTransposed();
+  const lamp = $('fit-lamp');
+  if (!lamp) return;
+  const { enabled, qualifies } = getFitState();
+  lamp.dataset.state = enabled ? 'on' : (qualifies ? 'available' : 'idle');
 }
 
 function scheduleRender(delay = 260) {
@@ -759,7 +763,7 @@ function scheduleRender(delay = 260) {
     if (!tab) return;
     const result = await renderGraph(tab.content);
     markNodeLinks(nodeLinkTargets(tab.content));
-    updateViewerNote();
+    updateFitIndicator();
     const badge = $('lint-badge');
     if (result.ok) {
       badge.textContent = 'ok';
@@ -1239,9 +1243,9 @@ function wireUI() {
     };
   });
 
-  applySmartView(localStorage.getItem('ms-smart-view') !== '0');
-  $('smart-view').onchange = () => {
-    applySmartView($('smart-view').checked);
+  applyOptimizeFit(localStorage.getItem('ms-optimize-fit') !== '0');
+  $('optimize-fit').onchange = () => {
+    applyOptimizeFit($('optimize-fit').checked);
     scheduleRender(0);
   };
 
@@ -1271,7 +1275,7 @@ function wireUI() {
         else toast('Saved SVG', 'ok');
       }
       if (kind === 'png') {
-        // export what is on screen, so smart view transposition is included
+        // export what is on screen, so optimize-fit transposition is included
         const shown = getRenderedSource() || tab?.content || '';
         if (!(await exportPng(`${base}.png`, shown))) toast('Nothing to export', 'warn');
         else toast('Saved PNG', 'ok');
@@ -1307,7 +1311,7 @@ function wireUI() {
       splitter.classList.remove('dragging');
       splitter.removeEventListener('pointermove', move);
       splitter.removeEventListener('pointerup', up);
-      scheduleRender(0); // the pane changed shape: re-evaluate smart view
+      scheduleRender(0); // the pane changed shape: re-evaluate optimize fit
     };
     splitter.addEventListener('pointermove', move);
     splitter.addEventListener('pointerup', up);
@@ -1336,7 +1340,7 @@ function wireUI() {
       appEl.classList.remove('resizing');
       agentSplitter.removeEventListener('pointermove', move);
       agentSplitter.removeEventListener('pointerup', up);
-      scheduleRender(0); // the panes changed shape: re-evaluate smart view
+      scheduleRender(0); // the panes changed shape: re-evaluate optimize fit
     };
     appEl.classList.add('resizing');
     agentSplitter.addEventListener('pointermove', move);
@@ -1395,7 +1399,7 @@ function wireUI() {
     renderTabs();
     toast('Applied to editor', 'ok');
   });
-  document.querySelectorAll('#quick-prompts button').forEach((button) => {
+  document.querySelectorAll('.quick-prompts button').forEach((button) => {
     button.onclick = () => sendChat(button.dataset.prompt);
   });
 
@@ -1421,7 +1425,7 @@ function wireUI() {
     focusNode(id);
   });
 
-  // the pane shape feeds the smart-view decision
+  // the pane shape feeds the optimize-fit decision
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);

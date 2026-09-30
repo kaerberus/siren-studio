@@ -180,8 +180,8 @@ check('preview rendered', !!document.querySelector('#graph-target svg'),
 check('outline populated', document.querySelectorAll('#outline-list .outline-item').length > 0,
   `items=${document.querySelectorAll('#outline-list .outline-item').length}`);
 check('templates rendered', document.querySelectorAll('#template-grid button').length === 6);
-check('smart view toggle exists, on by default',
-  document.querySelector('#smart-view')?.checked === true);
+check('optimize fit toggle exists, on by default',
+  document.querySelector('#optimize-fit')?.checked === true);
 check('gaps panel renders the ledger',
   /Open questions/.test(document.querySelector('#gaps-list').textContent),
   document.querySelector('#gaps-list').textContent.slice(0, 40));

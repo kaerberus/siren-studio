@@ -11,9 +11,9 @@ const mermaid = window.mermaid;
 const MIN_SCALE = 0.25; // zoomed out to a quarter of "fit"
 const MAX_SCALE = 24;   // zoomed in 24x
 const FIT_PAD = 0.05;   // 5% breathing room around the content
-// Smart view transposes a flowchart when it would otherwise use less than this
-// fraction of the pane on its non-binding axis.
-const SMART_THRESHOLD = 0.45;
+// Optimize fit transposes a flowchart when it would otherwise use less than
+// this fraction of the pane on its non-binding axis.
+const FIT_THRESHOLD = 0.45;
 const VERTICAL_DIRECTIONS = new Set(['TD', 'TB', 'BT']);
 const HORIZONTAL_DIRECTIONS = new Set(['LR', 'RL']);
 
@@ -21,10 +21,13 @@ let stage = null;
 let target = null;
 let emptyState = null;
 let themeMode = 'dark';
-let smartView = false;
+let optimizeFit = false;
 // What we actually rendered (may be transposed) and whether we flipped it.
 let renderedSource = '';
 let transposed = false;
+// Whether the authored diagram would transpose if the toggle were on. Computed
+// every render, so the indicator can show the opportunity while the feature is off.
+let qualifies = false;
 // Decision memo: transposition depends on the authored direction and the pane
 // shape, neither of which changes as you type, so avoid the trial render.
 let decisionKey = '';
@@ -121,7 +124,7 @@ function screenToUser(el, clientX, clientY) {
   return { x: view.x + view.w / 2, y: view.y + view.h / 2 };
 }
 
-// ── smart view: transpose a flowchart to use the pane better ────────────────
+// ── optimize fit: transpose a flowchart to use the pane better ─────────────
 
 /** The diagram keyword and direction of a flowchart, or null for anything else. */
 export function diagramDirection(source) {
@@ -165,18 +168,18 @@ function paneUsage(rect) {
 }
 
 /**
- * Should this source be transposed to fit the pane? Always judged from the
- * AUTHORED geometry, so the answer cannot oscillate.
+ * Would this source transpose if the feature were on? Always judged from the
+ * AUTHORED geometry, so the answer cannot oscillate. Independent of the toggle,
+ * so the indicator can report an opportunity while the feature is off.
  */
-function shouldTranspose(source, authoredRect) {
-  if (!smartView) return false;
+function fitWouldTranspose(source, authoredRect) {
   const info = diagramDirection(source);
   if (!info) return false; // flowcharts only
   const usage = paneUsage(expand(authoredRect, FIT_PAD));
   if (!usage) return false;
   const key = `${info.direction}|${usage.sw}x${usage.sh}|${Math.round(authoredRect.w)}x${Math.round(authoredRect.h)}`;
   if (key === decisionKey) return decisionValue;
-  const wastes = Math.min(usage.x, usage.y) < SMART_THRESHOLD;
+  const wastes = Math.min(usage.x, usage.y) < FIT_THRESHOLD;
   const portraitPane = usage.sh > usage.sw;
   // Only flip when the graph's axis disagrees with the pane's shape.
   const disagrees = HORIZONTAL_DIRECTIONS.has(info.direction) ? portraitPane
@@ -186,10 +189,10 @@ function shouldTranspose(source, authoredRect) {
   return decisionValue;
 }
 
-export function setSmartView(on) {
+export function setOptimizeFit(on) {
   const next = Boolean(on);
-  if (next === smartView) return;
-  smartView = next;
+  if (next === optimizeFit) return;
+  optimizeFit = next;
   decisionKey = ''; // force a fresh measurement
 }
 
@@ -197,7 +200,12 @@ export function isTransposed() {
   return transposed;
 }
 
-/** The source as currently rendered — transposed if smart view flipped it. */
+/** The toggle state, whether the current diagram qualifies, and whether it flipped. */
+export function getFitState() {
+  return { enabled: optimizeFit, qualifies, transposed };
+}
+
+/** The source as currently rendered — transposed if optimize fit flipped it. */
 export function getRenderedSource() {
   return renderedSource;
 }
@@ -225,6 +233,7 @@ export async function render(text) {
     target.innerHTML = '';
     renderedSource = '';
     transposed = false;
+    qualifies = false;
     return { ok: true, empty: true };
   }
   const stamp = Date.now();
@@ -241,7 +250,8 @@ export async function render(text) {
     let authored = readBaseViewBox(el);
     let shown = source;
 
-    if (shouldTranspose(source, authored)) {
+    qualifies = fitWouldTranspose(source, authored);
+    if (optimizeFit && qualifies) {
       const flipped = transposeSource(source);
       if (flipped) {
         const second = await mermaid.render(ids[1], flipped);
@@ -569,6 +579,64 @@ function labelFontSize(el) {
 
 function removeLinkGlyph(el) {
   el.querySelectorAll('.node-link-glyph').forEach((glyph) => glyph.remove());
+  unpadNode(el);
+}
+
+// Mermaid sized the node before the glyph existed, so the glyph used to spill
+// over the shape's right edge (and, on a framed shape, over its inner line).
+// These two keep the glyph honest: they add its advance to the shape (a
+// symmetric horizontal scale about the node centre) and shift the label half of
+// it, so text + glyph read as one centred unit inside the padding Mermaid
+// already reserved. `unpadNode` is the exact inverse, run on every re-mark.
+function unpadNode(el) {
+  el.querySelectorAll(':scope > .node-link-pad').forEach((pad) => {
+    while (pad.firstChild) el.insertBefore(pad.firstChild, pad);
+    pad.remove();
+  });
+  const label = el.querySelector('g.label');
+  if (label && label.dataset.baseTransform != null) {
+    label.setAttribute('transform', label.dataset.baseTransform);
+    delete label.dataset.baseTransform;
+  }
+}
+
+function padNode(el, advance, textWidth) {
+  if (!(advance > 0)) return;
+  const label = el.querySelector('g.label');
+  if (label) {
+    if (label.dataset.baseTransform == null) {
+      label.dataset.baseTransform = label.getAttribute('transform') || '';
+    }
+    const m = /translate\(\s*([-\d.]+)[,\s]+([-\d.]+)\s*\)/.exec(label.dataset.baseTransform);
+    // Only recentre a label Mermaid centred on the node; a left-anchored label
+    // (some non-flowchart diagrams) already starts at the node's edge.
+    if (m && Math.abs(parseFloat(m[1]) + textWidth / 2) < 1) {
+      label.setAttribute('transform',
+        `translate(${(parseFloat(m[1]) - advance / 2).toFixed(2)}, ${parseFloat(m[2])})`);
+    } else {
+      return;
+    }
+  }
+  // Only plain shape children can be wrapped. When Mermaid nests the shape in a
+  // link wrapper, leave the geometry alone and just recentre the label.
+  const shapes = [...el.querySelectorAll('.label-container')];
+  if (!shapes.length || !shapes.every((s) => s.parentElement === el)) return;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const s of shapes) {
+    let b;
+    try { b = s.getBBox(); } catch (_) { return; }
+    minX = Math.min(minX, b.x);
+    maxX = Math.max(maxX, b.x + b.width);
+  }
+  const width = maxX - minX;
+  if (!(width > 0)) return;
+  const sx = (width + advance) / width;
+  const pad = document.createElementNS(SVG_NS, 'g');
+  pad.setAttribute('class', 'node-link-pad');
+  pad.setAttribute('transform', `scale(${sx.toFixed(6)},1)`);
+  el.insertBefore(pad, shapes[0]);
+  shapes.forEach((s) => pad.appendChild(s));
 }
 
 // Mermaid writes a class's stroke-dasharray as an inline `!important`, which no
@@ -624,6 +692,12 @@ function attachLinkGlyph(el) {
 
   const inner = document.createElementNS(SVG_NS, 'g');
   inner.setAttribute('transform', `scale(${(size / LINK_GLYPH_BOX).toFixed(4)})`);
+  // Mermaid's node rule (`#id .node path { fill; stroke; stroke-width:1px }`)
+  // matches these paths directly, so an inherited stroke never reaches them and
+  // the icon would draw in the theme's path grey at 1px. Each path therefore
+  // states its own paint — same ink as the label text — with !important, which
+  // beats that rule.
+  const pathPaint = `fill:none !important;stroke:${ink} !important;stroke-width:1.5 !important`;
   // The conventional external-link symbol: a box with an arrow escaping its corner.
   for (const d of [
     'M4.8 3.4 H3.7 A1.5 1.5 0 0 0 2.2 4.9 v4.2 A1.5 1.5 0 0 0 3.7 10.6 h4.2 A1.5 1.5 0 0 0 9.4 9.1 V8',
@@ -632,10 +706,8 @@ function attachLinkGlyph(el) {
   ]) {
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', d);
-    // Belt and braces: fill:none is inherited from the group, but Mermaid's node
-    // CSS is fond of filling paths, so each path refuses a fill on its own.
     path.setAttribute('fill', 'none');
-    path.setAttribute('style', 'fill:none !important');
+    path.setAttribute('style', pathPaint);
     inner.appendChild(path);
   }
   glyph.appendChild(inner);
@@ -643,6 +715,15 @@ function attachLinkGlyph(el) {
   glyph.setAttribute('transform',
     `translate(${(box.x + box.width + LINK_GLYPH_GAP).toFixed(2)} ${(box.y + box.height / 2 - size / 2).toFixed(2)})`);
   container.appendChild(glyph);
+
+  // Reserve the glyph's own width in the node, so it centres with the label
+  // instead of overhanging the shape.
+  let advance = 0;
+  try {
+    const gb = glyph.getBBox();
+    advance = LINK_GLYPH_GAP + gb.x + gb.width;
+  } catch (_) { advance = 0; }
+  padNode(el, advance, box.width);
 }
 
 /**
