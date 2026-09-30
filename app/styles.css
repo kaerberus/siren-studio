@@ -445,6 +445,8 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
   text-underline-offset: 2px;
 }
 .node-link-glyph { transition: opacity 0.12s ease; }
+.node-link-glyph,
+.node-link-glyph path { fill: none !important; }
 .node-link:hover { filter: drop-shadow(0 0 4px rgba(124, 156, 255, 0.85)); }
 .node-link:hover .label, .node-link:hover .nodeLabel, .node-link:hover text {
   text-decoration-thickness: 2px;
@@ -573,6 +575,15 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 }
 .composer textarea:focus { outline: none; border-color: var(--accent); }
 .composer-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* Keycap keymap in the composer hint: the keys are underlined, the connective
+   words stay quiet. (Folded in from the accepted live variant.) */
+.composer-row .keymap { display: inline-flex; align-items: baseline; gap: 4px; color: var(--text-faint); }
+.composer-row .keymap kbd {
+  font-family: var(--font-ui); font-size: 11.5px; font-weight: 600; line-height: 1.2;
+  color: var(--text); background: none; border: 0; padding: 0 0 1px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.composer-row .keymap .sep { color: var(--border); }
 .primary-btn {
   padding: 6px 16px; border-radius: 7px; border: 1px solid var(--accent-strong);
   background: var(--accent-strong); color: #fff; font-size: 12.5px; font-weight: 500;

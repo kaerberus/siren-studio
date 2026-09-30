@@ -632,6 +632,10 @@ function attachLinkGlyph(el) {
   ]) {
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', d);
+    // Belt and braces: fill:none is inherited from the group, but Mermaid's node
+    // CSS is fond of filling paths, so each path refuses a fill on its own.
+    path.setAttribute('fill', 'none');
+    path.setAttribute('style', 'fill:none !important');
     inner.appendChild(path);
   }
   glyph.appendChild(inner);
