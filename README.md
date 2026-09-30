@@ -4,13 +4,18 @@
 You write a line like:
 
 ```text
-input[dough] --> process{oven} --> output[bread]
+flowchart LR; input[dough] --> process{oven} --> output[bread]
 ```
 
-And it renders as a flowchart. Because the diagram stays code, a large language
-model can read and change it as easily as you can, which makes it a natural fit
-for **agentic coding**: you plan visually, and the plan is something the model
-genuinely understands.
+And it renders as a flowchart:
+
+```mermaid
+flowchart LR; input[dough] --> process{oven} --> output[bread]
+```
+
+Because the diagram stays code, a large language model can read and change it as
+easily as you can, which makes it a natural fit for **agentic coding**: you plan
+visually, and the plan is something the model genuinely understands.
 
 **Siren Studio** lets you edit those diagrams without a command line: Mermaid on
 one side, the drawn picture on the other, updating as you type. It runs on your
