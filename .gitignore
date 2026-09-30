@@ -26,7 +26,7 @@ docs/TODO.md
 !.impeccable/live/config.json
 
 # Scratch screenshots (design review captures)
-screenshots/
+/screenshots/
 
 # Working diagrams are local state; shipped samples live in example-graphs/
 graphs/
