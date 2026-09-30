@@ -453,6 +453,21 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 .agent-id > div { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
 .agent-id strong { font-size: 13px; }
 .agent-sub { font-size: 11px; color: var(--text-faint); }
+/* Inference ticker: three cobalt dots pulse beside the status line while the
+   agent is working. app.js toggles .busy on the orb; :has lets the row react. */
+.agent-status { display: inline-flex; align-items: center; }
+.agent-dots { display: none; gap: 3px; margin-left: 4px; }
+.agent-dots i { width: 3px; height: 3px; border-radius: 999px; background: var(--accent); }
+.agent-id:has(.agent-orb.busy) .agent-dots { display: inline-flex; }
+.agent-id:has(.agent-orb.busy) .agent-dots i { animation: agent-dot-pulse 1.2s ease-in-out infinite; }
+.agent-id:has(.agent-orb.busy) .agent-dots i:nth-child(2) { animation-delay: 0.16s; }
+.agent-id:has(.agent-orb.busy) .agent-dots i:nth-child(3) { animation-delay: 0.32s; }
+.agent-id:has(.agent-orb.busy) .agent-sub { color: var(--accent); }
+@keyframes agent-dot-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-id:has(.agent-orb.busy) .agent-dots { display: inline-flex; }
+  .agent-id:has(.agent-orb.busy) .agent-dots i { animation: none; opacity: 1; }
+}
 .agent-orb {
   width: 22px; height: 22px; border-radius: 50%; flex: none;
   background: radial-gradient(circle at 30% 30%, var(--accent), #8b5cf6 70%);

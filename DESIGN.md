@@ -139,9 +139,10 @@ only saturated color is a cobalt signal that says *something here is live*.
 The mood is **calm precision**. Density is high and deliberate — four regions
 (files, editor, graph, agent) coexist in one viewport at 13.5px — but weight is
 carried by spacing and the ink ramp rather than by borders, fills, or badges.
-Motion is limited to the two transitions the work actually needs: the panel
-grid easing when a region opens or closes, and the splitter tracking the
-pointer with easing explicitly disabled so the drag never lags. The interface
+Motion is deliberate and small: the panel grid eases when a region opens or
+closes, the splitter tracks the pointer with easing explicitly disabled so the
+drag never lags, and the Graph Engineer's header ticks — a pulsing orb and three
+cobalt dots — while it is inferring. Nothing moves at rest. The interface
 is dark-first, and its light theme is a true peer — the same structure drawn on
 paper, not an inversion.
 
@@ -363,8 +364,9 @@ never underlines or bolds on hover — it only changes ink and fill.
   diagram are painted like hyperlinks — cobalt fill, underlined — because the
   graph itself must look navigable.
 - **Agent orb:** A 22px circle with a radial cobalt→violet gradient and a soft
-  cobalt halo. It pulses (halo widens) while the agent is busy, and is the panel's
-  single piece of ambient motion.
+  cobalt halo. While the agent is inferring it pulses (the halo widens) and a
+  row of three cobalt dots ticks beside the status line — the panel's one piece
+  of ambient motion, all keyed to the orb's `.busy` state.
 - **Gap ledger:** The `*.gaps.md` view rendered as a narrow reading column of
   uppercase section headings over dim body text and inline mono code — the
   notebook margin where unresolved questions live.

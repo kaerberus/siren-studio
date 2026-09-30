@@ -47,6 +47,7 @@
       { "name": "panel-fade", "value": "opacity 0.15s ease", "purpose": "Panel contents fade out as their column collapses." },
       { "name": "toast-in", "value": "slide-in 0.2s ease (translateY(8px) -> 0, opacity 0 -> 1)", "purpose": "Toasts rise into place." },
       { "name": "orb-pulse", "value": "pulse 1.1s ease-in-out infinite", "purpose": "Agent orb halo widens while the agent is busy." },
+      { "name": "agent-tick", "value": "agent-dot-pulse 1.2s ease-in-out infinite, staggered +0.16s per dot", "purpose": "Three cobalt dots beside the agent status line while it is inferring; reduced motion holds them lit instead." },
       { "name": "sync-spin", "value": "spin 0.7s linear infinite", "purpose": "Refresh icon while rescanning." },
       { "name": "stream-caret", "value": "blink 1s step-end infinite", "purpose": "Cobalt caret while the assistant reply streams." }
     ],

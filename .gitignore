@@ -19,3 +19,7 @@ Thumbs.db
 tests/node_modules/
 tests/.node/
 tests/package-lock.json
+
+# Impeccable live mode: commit the config, ignore session state
+.impeccable/live/*
+!.impeccable/live/config.json
