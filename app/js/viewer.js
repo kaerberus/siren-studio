@@ -532,15 +532,40 @@ export function clearHighlight() {
 
 // ── cross-file links ───────────────────────────────────────────────────────
 const SVG_NS = 'http://www.w3.org/2000/svg';
-// A linked node carries a small drawn external-link mark in its top-right
-// corner. It is painted in the node's own text color, which the diagram author
-// already chose to contrast that fill, so no badge is needed and the mark never
-// washes out on a light node. The literal fallback covers an exported SVG, where
-// the computed color still resolves but the accent token may not.
-const LINK_GLYPH_SIZE = 12;
-const LINK_GLYPH_INSET = 3;
-const LINK_GLYPH_STYLE = 'opacity:.9';
-const LINK_GLYPH_FALLBACK = 'var(--accent,#7c9cff)';
+// A linked node carries a small drawn external-link mark at the end of its
+// label, sized and colored to read as part of the text. The paths are authored
+// in a 12-unit box and scaled to the label's font size. Paint is set inline with
+// !important because Mermaid fills node shapes with !important, which would
+// otherwise fill the mark's box. The 12-unit box and the fallbacks keep an
+// exported SVG rendering.
+const LINK_GLYPH_BOX = 12;
+const LINK_GLYPH_GAP = 2;
+const LINK_GLYPH_MIN = 10;
+const LINK_GLYPH_MAX = 15;
+const LINK_GLYPH_STYLE = 'opacity:.95';
+const LINK_GLYPH_FALLBACK = 'currentColor';
+
+/** The color the label text is actually painted in, per diagram class. */
+function labelInk(el) {
+  const node = el.querySelector('.nodeLabel');
+  if (node) {
+    const color = getComputedStyle(node).color;
+    if (color) return color;
+  }
+  const text = el.querySelector('text');
+  if (text) {
+    const fill = getComputedStyle(text).fill;
+    if (fill && fill !== 'none') return fill;
+  }
+  return getComputedStyle(el).color || LINK_GLYPH_FALLBACK;
+}
+
+/** The label's font size, so the mark can match it rather than guess. */
+function labelFontSize(el) {
+  const node = el.querySelector('.nodeLabel') || el.querySelector('text') || el;
+  const size = parseFloat(getComputedStyle(node).fontSize);
+  return Number.isFinite(size) && size > 0 ? size : 16;
+}
 
 function removeLinkGlyph(el) {
   el.querySelectorAll('.node-link-glyph').forEach((glyph) => glyph.remove());
@@ -569,32 +594,36 @@ function restoreLinkDash(el) {
 }
 
 /**
- * A small drawn external-link mark the editor pins inside the top-right corner
- * of a node that links to another diagram. Mermaid only gives us the shape and
- * its label, and the `click` directive has to stay plain in the .mmd, so the
- * mark is added here and never written back to source. It is anchored to the
- * node's own box, so it stays inside the shape whatever the label is made of
- * (the interactive preview uses an HTML <foreignObject>; the export path uses
- * <text>), and it is painted in the node's text color, which the diagram author
- * already chose to contrast that fill. A node that never laid out (a hidden
- * pane) simply gets no mark.
+ * A small drawn external-link mark pinned to the end of a linking node's label.
+ * Mermaid only gives us the shape and its label, and the `click` directive has
+ * to stay plain in the .mmd, so the mark is added here and never written back to
+ * source. It sizes and colors to the label text, so it reads as part of the
+ * label rather than as chrome. A label that never laid out (a hidden pane) gets
+ * no mark.
  */
 function attachLinkGlyph(el) {
+  const label = el.querySelector('g.label');
+  const host = label || el.querySelector('text') || el;
   let box;
-  try { box = el.getBBox(); } catch (_) { return; }
+  try { box = host.getBBox(); } catch (_) { return; }
   if (!box || !box.width) return;
-  let color = LINK_GLYPH_FALLBACK;
-  try { color = getComputedStyle(el).color || color; } catch (_) { /* keep fallback */ }
+
+  const size = Math.max(LINK_GLYPH_MIN, Math.min(LINK_GLYPH_MAX, labelFontSize(el) * 0.8));
+  const ink = labelInk(el);
+  const container = label || (host.tagName && host.tagName.toLowerCase() === 'text'
+    ? (host.parentNode || el) : el);
 
   const glyph = document.createElementNS(SVG_NS, 'g');
   glyph.setAttribute('class', 'node-link-glyph');
   glyph.setAttribute('aria-hidden', 'true');
-  glyph.setAttribute('style', LINK_GLYPH_STYLE);
-  glyph.setAttribute('fill', 'none');
-  glyph.setAttribute('stroke', color);
-  glyph.setAttribute('stroke-width', '1.3');
-  glyph.setAttribute('stroke-linecap', 'round');
-  glyph.setAttribute('stroke-linejoin', 'round');
+  // Inline, important: Mermaid fills node shapes with !important, which would
+  // otherwise fill the icon's box grey.
+  glyph.setAttribute('style',
+    `${LINK_GLYPH_STYLE};fill:none !important;stroke:${ink};stroke-width:1.5;`
+    + 'stroke-linecap:round;stroke-linejoin:round');
+
+  const inner = document.createElementNS(SVG_NS, 'g');
+  inner.setAttribute('transform', `scale(${(size / LINK_GLYPH_BOX).toFixed(4)})`);
   // The conventional external-link symbol: a box with an arrow escaping its corner.
   for (const d of [
     'M4.8 3.4 H3.7 A1.5 1.5 0 0 0 2.2 4.9 v4.2 A1.5 1.5 0 0 0 3.7 10.6 h4.2 A1.5 1.5 0 0 0 9.4 9.1 V8',
@@ -603,11 +632,13 @@ function attachLinkGlyph(el) {
   ]) {
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', d);
-    glyph.appendChild(path);
+    inner.appendChild(path);
   }
+  glyph.appendChild(inner);
+
   glyph.setAttribute('transform',
-    `translate(${(box.x + box.width - LINK_GLYPH_INSET - LINK_GLYPH_SIZE).toFixed(2)} ${(box.y + LINK_GLYPH_INSET).toFixed(2)})`);
-  el.appendChild(glyph);
+    `translate(${(box.x + box.width + LINK_GLYPH_GAP).toFixed(2)} ${(box.y + box.height / 2 - size / 2).toFixed(2)})`);
+  container.appendChild(glyph);
 }
 
 /**

@@ -362,9 +362,9 @@ never underlines or bolds on hover — it only changes ink and fill.
   Pan/zoom drive the SVG `viewBox`, so magnification stays vector-crisp. Selected
   nodes get a cobalt stroke and drop-shadow; a node whose `click` links to another
   diagram is painted like a hyperlink — cobalt fill, underlined — and carries a
-  small external-link mark in its top-right corner, drawn in the node's own text
-  color so it contrasts whatever the fill is. A linked node also clears the async
-  dash stroke, since the underline and mark already carry the cue.
+  small external-link mark at the end of its label, sized and coloured to match
+  the label text. A linked node also clears the async dash stroke, since the
+  underline and mark already carry the cue.
 - **Agent orb:** A 22px circle with a radial cobalt→violet gradient and a soft
   cobalt halo. While the agent is inferring it pulses (the halo widens) and a
   row of three cobalt dots ticks beside the status line — the panel's one piece

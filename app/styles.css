@@ -426,9 +426,9 @@ button.pill:hover { border-color: var(--accent); color: var(--text); }
 }
 /* A node whose `click` links to another diagram: it has to look clickable, so
    the label is painted like a hyperlink and the editor pins a small drawn
-   external-link mark inside its top-right corner (viewer.js). The directive
-   stays plain in the .mmd — the mark is editor-only chrome. Mermaid styles SVG
-   text itself, hence the !important. */
+   external-link mark at the end of its label, sized and coloured to the text
+   (viewer.js). The directive stays plain in the .mmd — the mark is editor-only
+   chrome. Mermaid styles SVG text itself, hence the !important. */
 .node-link { cursor: pointer; }
 .node-link .label, .node-link .nodeLabel, .node-link text {
   fill: var(--accent) !important;
