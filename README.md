@@ -17,21 +17,16 @@ flowchart LR
     classDef bread fill:#d9a441,stroke:#9c6f1f,color:#2a1f08
 ```
 
-Because the diagram stays code, a large language model can read and change it as
+Because the diagram also exists as code, a large language model can read and change it as
 easily as you can, which makes it a natural fit for **agentic coding**: you plan
-visually, and the plan is something the model genuinely understands.
+visually, and the plan is something the model natively understands.
 
-**Siren Studio** lets you edit those diagrams without a command line: Mermaid on
-one side, the drawn picture on the other, updating as you type. It runs on your
-own machine (Python 3 and a browser, no build step), and the diagrams are
-ordinary files next to your code.
+**Siren Studio** lets you edit those diagrams without resorting to always-online editors that constantly solicit you to sign up to the ir paid subscription. It runs on your own machine and integrates with **OpenCode**, so you can trivially power an agent to help design the diagrams with local or cloud AI.
 
-It also integrates with **OpenCode**, so you can bring in its agents (running on
-local or cloud AI) to help design the diagrams in the first place, and then to
-find the gaps in those designs: missing error paths, open questions, and places
-where the picture and the code have drifted apart.
+The packaged Graph Engineer agent helps find the gaps in your designs: missing error paths, open questions, and places
+where the picture and real implementation have drifted apart.
 
-*Agentically coded with DeepSeek V4.1 Flash.*
+*This project was agentically coded with DeepSeek V4.1 Flash.*
 
 ## Screenshots
 
@@ -43,7 +38,7 @@ where the picture and the code have drifted apart.
 
 ## Quick start
 
-Needs Python 3.9+ and [OpenCode](https://opencode.ai) running.
+Needs Python 3.9+ and optional but recommended [OpenCode](https://opencode.ai) running for agentic capabilities.
 
 ```sh
 git clone https://github.com/kaerberus/siren-studio && cd siren-studio
@@ -61,8 +56,7 @@ diagram paths read as `graphs/03-payment.mmd` for you and for the agent.
 With no arguments, `start.py` reopens **the last project you used** and falls back
 to this checkout the first time (or if that project is gone). It names the project
 it picked, and where it got it from, in the startup banner. The project name is
-also echoed in the topbar, the file-tree head and the browser tab, so which
-folder you are on is never a guess.
+also echoed in the topbar, the file-tree head and the browser tab, so you know what your working directory is.
 
 ### Commands
 
